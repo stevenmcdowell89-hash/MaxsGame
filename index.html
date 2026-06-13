@@ -14,10 +14,18 @@
   <link rel="manifest" href="./manifest.webmanifest" />
 
   <style>
-    :root { color-scheme: dark; }
+    :root {
+      color-scheme: dark;
+      /* Real visible viewport height, set from JS (window.innerHeight). This is
+         the reliable way to fill a tablet/phone screen: CSS 100vh measures the
+         viewport with the browser toolbar HIDDEN, so it's taller than what you
+         can actually see and pushes the bottom UI off-screen. */
+      --app-height: 100vh;
+    }
     html, body {
       margin: 0;
       padding: 0;
+      width: 100%;
       height: 100%;
       background: #171423;
       overflow: hidden;
@@ -29,14 +37,42 @@
       -webkit-tap-highlight-color: transparent;
     }
     #game-root {
+      position: fixed;
+      inset: 0;
       width: 100vw;
-      height: 100vh;
+      height: 100vh;            /* fallback */
+      height: var(--app-height); /* exact visible height (JS-driven) */
       display: flex;
       align-items: center;
       justify-content: center;
     }
     #game-root canvas { display: block; }
   </style>
+
+  <script>
+    // Keep the game box equal to the ACTUAL visible viewport height. Updates as
+    // the mobile browser toolbar shows/hides and on orientation change, then
+    // tells Phaser's Scale.FIT to re-fit the canvas into the new box.
+    (function () {
+      function setAppHeight() {
+        document.documentElement.style.setProperty('--app-height', window.innerHeight + 'px');
+      }
+      function refit() {
+        setAppHeight();
+        // Defer the refresh until AFTER the browser applies the new height, so
+        // Phaser reads the updated parent size (a same-tick refresh sees stale
+        // layout). Double rAF is belt-and-braces across browsers.
+        if (window.__game && window.__game.scale) {
+          requestAnimationFrame(() =>
+            requestAnimationFrame(() => window.__game.scale.refresh()));
+        }
+      }
+      window.addEventListener('resize', refit);
+      window.addEventListener('orientationchange', () => { refit(); setTimeout(refit, 250); });
+      setAppHeight();
+    })();
+  </script>
+
 </head>
 <body>
   <div id="game-root"></div>
