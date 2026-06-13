@@ -80,8 +80,13 @@ export class HUDScene extends Phaser.Scene {
       fontFamily: FONT, fontSize: '24px', color: PALETTE.hudText, fontStyle: 'bold',
     }).setOrigin(0.5);
     container.add([bg, txt]);
-    container.setSize(w, h);
-    container.setInteractive(new Phaser.Geom.Rectangle(-w / 2, -h / 2, w, h), Phaser.Geom.Rectangle.Contains);
+
+    // The BACKGROUND rectangle is the interactive target — a concrete shaped
+    // object whose hit area Phaser computes from its full size. The label sits
+    // on top and is never interactive, so it can't create a "dead" centre that
+    // only responds at the edges (the symptom seen on the tablet). This nested
+    // interactive-child-of-container pattern hit-tests reliably on touch.
+    bg.setInteractive({ useHandCursor: true });
 
     const api = {
       container, bg, txt,
@@ -96,16 +101,18 @@ export class HUDScene extends Phaser.Scene {
       setEnabled: (on) => {
         api.enabled = on;
         container.alpha = on ? 1 : 0.4;
+        if (on) bg.setInteractive({ useHandCursor: true });
+        else bg.disableInteractive();
       },
     };
 
-    container.on('pointerover', () => { if (api.enabled) bg.setStrokeStyle(2, 0x8be9ff); });
-    container.on('pointerout', () => bg.setStrokeStyle(2, 0x4a4470));
-    container.on('pointerdown', () => {
+    bg.on('pointerover', () => { if (api.enabled) bg.setStrokeStyle(2, 0x8be9ff); });
+    bg.on('pointerout', () => bg.setStrokeStyle(2, 0x4a4470));
+    bg.on('pointerdown', () => {
       if (!api.enabled) return;
       this.tweens.add({ targets: container, scaleX: 0.95, scaleY: 0.95, duration: 60, yoyo: true });
     });
-    container.on('pointerup', () => { if (api.enabled) onTap(); });
+    bg.on('pointerup', () => { if (api.enabled) onTap(); });
 
     return api;
   }
