@@ -161,12 +161,20 @@ export function generatePlaceholderTextures(scene) {
   makeTileTexture(scene, 'tile-ground', PALETTE.tileGround, PALETTE.tileGroundEdge);
   makeTileTexture(scene, 'tile-path', PALETTE.tilePath, PALETTE.tilePathEdge);
 
+  // Only generate a placeholder when a real asset hasn't already been loaded
+  // under that key (see BootScene.preload). This is the art seam in action.
   for (const t of TOWER_LIST) {
-    makeBotTexture(scene, t.textureKey, { color: t.color, accent: t.accent, w: 64, h: 92 });
-    makeBoltTexture(scene, t.projectileKey, t.color);
+    if (!scene.textures.exists(t.textureKey)) {
+      makeBotTexture(scene, t.textureKey, { color: t.color, accent: t.accent, w: 64, h: 92 });
+    }
+    if (!scene.textures.exists(t.projectileKey)) {
+      makeBoltTexture(scene, t.projectileKey, t.color);
+    }
   }
   for (const e of ENEMY_LIST) {
-    makeBotTexture(scene, e.textureKey, { color: e.color, accent: e.accent, w: 52, h: 64 });
+    if (!scene.textures.exists(e.textureKey)) {
+      makeBotTexture(scene, e.textureKey, { color: e.color, accent: e.accent, w: 52, h: 64 });
+    }
   }
 
   makeSparkTexture(scene, 'spark');

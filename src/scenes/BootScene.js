@@ -9,6 +9,8 @@
 // ---------------------------------------------------------------------------
 
 import { generatePlaceholderTextures } from '../rendering/textures.js';
+import { TOWER_LIST } from '../data/towers.js';
+import { ENEMY_LIST } from '../data/enemies.js';
 
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -16,8 +18,13 @@ export class BootScene extends Phaser.Scene {
   }
 
   preload() {
-    // No external assets in v1 — textures are generated in create(). Real art
-    // loads would go here later.
+    // Load real hand-drawn art for any tower/enemy that declares an `asset`.
+    // It loads under the same texture key the placeholder would use, so the
+    // rest of the game is unaffected. Anything without an `asset` falls back to
+    // a generated placeholder in create().
+    for (const def of [...TOWER_LIST, ...ENEMY_LIST]) {
+      if (def.asset) this.load.image(def.textureKey, def.asset);
+    }
   }
 
   create() {

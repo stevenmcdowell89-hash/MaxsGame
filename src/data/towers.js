@@ -15,6 +15,15 @@
 //   projectileKey   texture key for the projectile placeholder
 //   color           base colour for the generated placeholder art
 //   accent          secondary colour (eye / muzzle glow)
+//
+// Optional REAL-ART fields (when a hand-drawn PNG replaces the placeholder):
+//   asset           path to a transparent PNG, loaded under `textureKey`
+//   artHeight       on-screen height in px (sprite scaled to this, aspect kept)
+//   originX/originY  anchor as 0..1 of the texture; put this over the tile centre
+//                    (originX = base centre, originY ≈ bottom of the base)
+//   facing          direction the art's barrel points by default ('left'|'right')
+//   muzzle          { x, y } px offset from the origin to the barrel tip, where
+//                    bolts/flashes spawn (x is mirrored when the tower flips)
 // ---------------------------------------------------------------------------
 
 export const TOWERS = {
@@ -29,7 +38,15 @@ export const TOWERS = {
     projectileSpeed: 540,
     projectileKey: 'proj-bolt',
     color: 0x7fc7ff,
-    accent: 0xfff27a,
+    accent: 0xffb24a,
+
+    // Real art (Max's first tower): a bow-cannon turret with a glowing muzzle.
+    asset: 'assets/towers/blaster.png',
+    artHeight: 150,
+    originX: 0.49,
+    originY: 0.99,
+    facing: 'left',
+    muzzle: { x: 88, y: 84 },
   },
 };
 
