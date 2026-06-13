@@ -1,0 +1,10 @@
+# Dependencies (none committed; static project has no build step yet)
+node_modules/
+
+# Editor / OS cruft
+.DS_Store
+.vscode/
+*.log
+
+# Local server / test artifacts
+*.local

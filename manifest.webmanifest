@@ -1,0 +1,12 @@
+{
+  "name": "Robo Defense",
+  "short_name": "RoboDef",
+  "description": "A robot tower-defense game built together, one wave at a time.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#171423",
+  "theme_color": "#171423",
+  "icons": []
+}

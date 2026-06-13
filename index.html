@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <!-- Tablet-first: fill the screen, disable pinch-zoom / double-tap zoom. -->
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#171423" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <title>Robo Defense — Sector One</title>
+
+  <!-- PWA manifest (offline install seam; see CLAUDE.md "next steps"). -->
+  <link rel="manifest" href="./manifest.webmanifest" />
+
+  <style>
+    :root { color-scheme: dark; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      background: #171423;
+      overflow: hidden;
+      /* Prevent the browser from hijacking touches (scroll/zoom) on tablet. */
+      touch-action: none;
+      overscroll-behavior: none;
+      -webkit-user-select: none;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    #game-root {
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #game-root canvas { display: block; }
+  </style>
+</head>
+<body>
+  <div id="game-root"></div>
+
+  <!-- Phaser from CDN (the one allowed global). Classic script runs before the
+       deferred module below, so window.Phaser is ready when main.js executes. -->
+  <script src="https://cdn.jsdelivr.net/npm/phaser@3.88.2/dist/phaser.min.js"></script>
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
