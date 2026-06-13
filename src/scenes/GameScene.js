@@ -226,11 +226,58 @@ export class GameScene extends Phaser.Scene {
     this.enemies.push(enemy);
   }
 
-  // --------------------------------------------------------- projectiles ----
+  // ------------------------------------------------------------- weapons ----
+
+  // Route a tower's shot to the right weapon (the tower is weapon-agnostic).
+  fireWeapon(def, x, y, target) {
+    if (def.weapon === 'laser') this.fireLaser(def, x, y, target);
+    else this.fireProjectile(def, x, y, target);
+  }
 
   fireProjectile(def, x, y, target) {
     const proj = new Projectile(this, x, y, def, target, this.audio);
     this.projectiles.push(proj);
+  }
+
+  // Hitscan laser: damage is applied immediately and a beam is drawn from the
+  // muzzle to the target, then fades.
+  fireLaser(def, x, y, target) {
+    if (!target || !target.alive) return;
+    const tx = target.x;
+    const ty = target.y - (target.body ? target.body.displayHeight * 0.45 : 20);
+    this.drawLaserBeam(x, y, tx, ty, def);
+    target.takeDamage(def.damage, this.audio);
+    this.audio.laser();
+  }
+
+  drawLaserBeam(x1, y1, x2, y2, def) {
+    const color = def.laserColor ?? def.accent ?? 0xffffff;
+    const depth = DEPTH.entityBase + Math.max(y1, y2) + DEPTH.effectBias;
+    const mx = (x1 + x2) / 2;
+    const my = (y1 + y2) / 2;
+    const dist = Math.hypot(x2 - x1, y2 - y1);
+    const angle = Math.atan2(y2 - y1, x2 - x1);
+
+    // Stretched additive sprites: a coloured glow + a white-hot core.
+    const glow = this.add.image(mx, my, 'laser-beam')
+      .setRotation(angle).setTint(color).setBlendMode(Phaser.BlendModes.ADD).setDepth(depth);
+    glow.setDisplaySize(dist, 22);
+    const core = this.add.image(mx, my, 'laser-beam')
+      .setRotation(angle).setBlendMode(Phaser.BlendModes.ADD).setDepth(depth + 1);
+    core.setDisplaySize(dist, 6);
+    this.tweens.add({
+      targets: [glow, core], alpha: 0, duration: 190, ease: 'Quad.easeOut',
+      onComplete: () => { glow.destroy(); core.destroy(); },
+    });
+
+    const hit = this.add.particles(x2, y2, 'spark', {
+      speed: { min: 50, max: 160 }, angle: { min: 0, max: 360 },
+      scale: { start: 0.8, end: 0 }, lifespan: 240, quantity: 8,
+      tint: [color, 0xffffff], blendMode: 'ADD', emitting: false,
+    });
+    hit.setDepth(depth + 2);
+    hit.explode();
+    this.time.delayedCall(280, () => hit.destroy());
   }
 
   // ---------------------------------------------------------------- waves ----
@@ -311,7 +358,7 @@ export class GameScene extends Phaser.Scene {
 
     // Towers.
     for (const t of this.towers) {
-      t.update(delta, this.enemies, (def, x, y, target) => this.fireProjectile(def, x, y, target), this.audio);
+      t.update(delta, this.enemies, (def, x, y, target) => this.fireWeapon(def, x, y, target), this.audio);
     }
 
     // Projectiles.

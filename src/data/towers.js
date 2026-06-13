@@ -29,12 +29,21 @@
 export const TOWERS = {
   blaster: {
     id: 'blaster',
-    name: 'Blaster Bot',
+    name: 'Laser Turret',
     textureKey: 'tower-blaster',
     cost: 50,
     range: 2.7,
+
+    // Laser weapon: charges up, then fires an instant beam. Stronger per hit
+    // to justify the slower cadence.
+    weapon: 'laser',
+    chargeTime: 1500,   // ms of charge (with a growing muzzle glow) before firing
+    damage: 50,
+    laserColor: 0xff7a2a,
+
+    // Projectile fields are unused by the laser but kept so the placeholder
+    // bolt texture still generates cleanly for any future projectile tower.
     fireRate: 620,
-    damage: 18,
     projectileSpeed: 540,
     projectileKey: 'proj-bolt',
     color: 0x7fc7ff,
@@ -42,11 +51,11 @@ export const TOWERS = {
 
     // Real art (Max's first tower): a bow-cannon turret with a glowing muzzle.
     asset: 'assets/towers/blaster.png',
-    artHeight: 150,
-    originX: 0.49,
-    originY: 0.99,
+    artHeight: 75,      // half the original size
+    originX: 0.5,       // base is horizontally centred in the (re-padded) art
+    originY: 0.997,     // anchor at the base bottom so it sits on the tile
     facing: 'left',
-    muzzle: { x: 88, y: 84 },
+    muzzle: { xFrac: 0.3645, yFrac: 0.5182 }, // barrel tip, as fractions of size
   },
 };
 

@@ -66,6 +66,17 @@ export class AudioManager {
     this.tone({ freq: 720, endFreq: 480, type: 'square', dur: 0.08, gain: 0.18 });
   }
 
+  // Rising "powering up" hum when a charge begins.
+  charge() {
+    this.tone({ freq: 160, endFreq: 520, type: 'sawtooth', dur: 0.5, gain: 0.12 });
+  }
+
+  // Sharp beam discharge.
+  laser() {
+    this.tone({ freq: 1400, endFreq: 320, type: 'sawtooth', dur: 0.16, gain: 0.22 });
+    this.tone({ freq: 2400, endFreq: 1200, type: 'sine', dur: 0.08, gain: 0.12 });
+  }
+
   hit() {
     this.tone({ freq: 320, endFreq: 200, type: 'triangle', dur: 0.06, gain: 0.2 });
   }

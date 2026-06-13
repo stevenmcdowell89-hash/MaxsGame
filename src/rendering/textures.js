@@ -118,6 +118,25 @@ function makeBoltTexture(scene, key, color) {
   g.destroy();
 }
 
+// A horizontal beam strip: full-white with a soft vertical falloff, so it can
+// be stretched into a laser and tinted. (We render beams as stretched sprites
+// rather than runtime Graphics — Graphics lines can drop out of the WebGL batch
+// when a particle emitter is created in the same frame.)
+function makeBeamTexture(scene, key) {
+  const w = 16;
+  const h = 32;
+  const g = scene.make.graphics({ x: 0, y: 0, add: false });
+  const mid = (h - 1) / 2;
+  for (let y = 0; y < h; y++) {
+    const d = Math.abs(y - mid) / mid;       // 0 at centre -> 1 at edge
+    const a = Math.max(0, 1 - d * d);        // smooth falloff
+    g.fillStyle(0xffffff, a);
+    g.fillRect(0, y, w, 1);
+  }
+  g.generateTexture(key, w, h);
+  g.destroy();
+}
+
 // A tiny soft spark for particle bursts.
 function makeSparkTexture(scene, key) {
   const r = 6;
@@ -178,5 +197,6 @@ export function generatePlaceholderTextures(scene) {
   }
 
   makeSparkTexture(scene, 'spark');
+  makeBeamTexture(scene, 'laser-beam');
   makeBaseTexture(scene, 'base-core');
 }
