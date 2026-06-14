@@ -97,6 +97,31 @@ export class IsoGrid {
     return this.iso.tilesToPixels(tiles);
   }
 
+  // World-space bounding box of the whole board, padded for tile size and the
+  // headroom that tall sprites (towers/enemies) need above their tile centre.
+  // Used to clamp the camera so panning can't drift off the board.
+  getBounds(margin = 0) {
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (let c = 0; c < this.cols; c++) {
+      for (let r = 0; r < this.rows; r++) {
+        const p = this.toScreen(c, r);
+        minX = Math.min(minX, p.x);
+        maxX = Math.max(maxX, p.x);
+        minY = Math.min(minY, p.y);
+        maxY = Math.max(maxY, p.y);
+      }
+    }
+    const padX = ISO.tileWidth / 2 + margin;
+    const padTop = ISO.tileHeight + 96 + margin; // room for tall art above centre
+    const padBottom = ISO.tileHeight + margin;
+    return {
+      x: minX - padX,
+      y: minY - padTop,
+      width: (maxX - minX) + padX * 2,
+      height: (maxY - minY) + padTop + padBottom,
+    };
+  }
+
   get spawnPoint() {
     return this.pathPoints[0];
   }

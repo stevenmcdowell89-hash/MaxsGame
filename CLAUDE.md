@@ -83,6 +83,7 @@ src/
     PlacementManager.js    # build-mode interaction + highlight/range preview
     WaveManager.js         # spawn scheduling driven by data/waves.js
     TargetingSystem.js     # tower target-selection policy
+    CameraController.js    # pan (drag / two-finger) + zoom (pinch/wheel/buttons)
   audio/
     AudioManager.js        # Web Audio synth (all SFX, no files)
   entities/
@@ -117,6 +118,12 @@ decide *how*.
 - **Rendering math is pure** (`rendering/iso.js`); board *state* is in
   `systems/IsoGrid.js`. Depth sorting: tiles sit in a low band; everything else
   is depth-sorted by its screen-Y each frame (`DEPTH` in `data/game.js`).
+- **Camera = the world; HUD is fixed.** The board can be larger than the screen,
+  so `GameScene` pans/zooms its main camera via `CameraController` (drag or
+  two-finger to pan, pinch/wheel/HUD `+`/`−` to zoom; clamped to the board). The
+  HUD is a separate scene/camera, so it never moves. Because of this, all
+  build/select hit-testing converts pointer→world through the camera
+  (`GameScene.worldPoint`), not raw `pointer.worldX`.
 - **No global state / no script-order reliance** beyond the `Phaser` CDN global.
   `window.__game` / `window.__bus` are attached in `main.js` purely as debug
   handles (handy in the console; safe to delete).

@@ -72,6 +72,14 @@ export class HUDScene extends Phaser.Scene {
       EventBus.emit(EVENTS.REQUEST_START_WAVE);
     });
 
+    // Zoom controls (between Start Wave and Sound).
+    this.makeButton(958, h - 48, 80, 68, '−', () => {
+      EventBus.emit(EVENTS.REQUEST_ZOOM, -1);
+    });
+    this.makeButton(1048, h - 48, 80, 68, '+', () => {
+      EventBus.emit(EVENTS.REQUEST_ZOOM, 1);
+    });
+
     // Mute button (far right).
     this.muteBtn = this.makeButton(w - 90, h - 48, 150, 68, 'SOUND', () => {
       EventBus.emit(EVENTS.REQUEST_TOGGLE_MUTE);
