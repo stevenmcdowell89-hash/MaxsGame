@@ -25,7 +25,13 @@ export const ENERGY = {
   // Source outputs (strength emitted at distance 0). The field steps down one
   // per tile of Chebyshev distance: e.g. core 4 -> 4,3,2,1,0 outward.
   coreOutput: 4,
-  conduitOutput: 3,
+  // The conduit is the player's "expand your power" tool, so it reaches FURTHER
+  // than the core: at output 5 a single conduit powers tier-1 out to 4 tiles,
+  // tier-2 out to 3, and tier-3 out to 2 (its own tile is occupied, so the best
+  // buildable tile beside it is output-1 = 4). Chaining conduits covers the map
+  // and unlocks high-tier zones away from the core. Drain still caps how MANY
+  // high-tier towers fit, independent of this number.
+  conduitOutput: 5,
 
   // How much strength each placed tower removes from every tile in its drain
   // footprint, keyed by the tower's tier. Higher tier = hungrier.
