@@ -9,7 +9,8 @@ import { GAME, ISO, PALETTE, DEPTH } from '../data/game.js';
 import { LEVELS, DEFAULT_LEVEL_ID } from '../data/levels.js';
 import { WAVES } from '../data/waves.js';
 import { ENEMIES } from '../data/enemies.js';
-import { TOWERS, DEFAULT_TOWER_ID } from '../data/towers.js';
+import { TOWERS, TOWER_LIST, DEFAULT_TOWER_ID } from '../data/towers.js';
+import { ENERGY } from '../data/energy.js';
 
 import { EventBus, EVENTS } from '../core/EventBus.js';
 import { SaveManager } from '../core/SaveManager.js';
@@ -19,6 +20,8 @@ import { IsoGrid } from '../systems/IsoGrid.js';
 import { PlacementManager } from '../systems/PlacementManager.js';
 import { WaveManager } from '../systems/WaveManager.js';
 import { CameraController } from '../systems/CameraController.js';
+import { EnergyField } from '../systems/EnergyField.js';
+import { EnergyView } from '../systems/EnergyView.js';
 
 import { Enemy } from '../entities/Enemy.js';
 import { Tower } from '../entities/Tower.js';
@@ -60,6 +63,17 @@ export class GameScene extends Phaser.Scene {
     const playArea = { x: 0, y: 64, width: GAME.width, height: GAME.height - 64 - 110 };
     this.grid = new IsoGrid(this.level, playArea);
     this.drawBoard();
+
+    // ---- Energy field (core is the primary source) + its glow layer ----
+    this.energy = new EnergyField(this.grid);
+    this.energyView = new EnergyView(this, this.grid, this.energy);
+
+    // Small debug readout: tap a tile to print its raw strength (numbers stay
+    // out of the main view — the field reads via the glow + placement overlay).
+    this.tileInfo = this.add.text(16, 70, '', {
+      fontFamily: 'system-ui, monospace', fontSize: '16px',
+      color: '#bfeaff', backgroundColor: 'rgba(10,8,20,0.72)', padding: { x: 8, y: 4 },
+    }).setScrollFactor(0).setDepth(DEPTH.ui).setVisible(false);
 
     // Range ring shown when a built tower is selected (below entities).
     this.rangeRing = this.add.graphics();
@@ -197,7 +211,7 @@ export class GameScene extends Phaser.Scene {
       // In build mode a one-finger drag aims the highlight, so disable one-finger
       // panning (two-finger pinch/pan still works); restore it otherwise.
       this.camCtl.setSingleDragPan(!active);
-      EventBus.emit(EVENTS.BUILD_MODE_CHANGED, active);
+      EventBus.emit(EVENTS.BUILD_MODE_CHANGED, { active, pieceId: def.id });
     };
     // HUD boots after this scene on first load, so it can miss the STATE_INIT
     // we emit in create(). When the HUD signals it's ready, (re)publish state.
@@ -239,7 +253,11 @@ export class GameScene extends Phaser.Scene {
       totalWaves: this.waves.totalWaves,
       best: SaveManager.getBestWave(),
       muted: this.audio.muted,
-      tower: TOWERS[DEFAULT_TOWER_ID],
+      // The build bar is driven entirely by data: every piece, in order.
+      pieces: TOWER_LIST.map((t) => ({
+        id: t.id, name: t.name, cost: t.cost,
+        tier: t.tier ?? 0, isSource: !!t.isSource,
+      })),
     });
     EventBus.emit(EVENTS.WAVE_READY, true);
   }
@@ -274,7 +292,7 @@ export class GameScene extends Phaser.Scene {
 
   // -------------------------------------------------------------- towers ----
 
-  tryBuildTower(cell, def) {
+  tryBuildPiece(cell, def) {
     if (!this.grid.isBuildable(cell.c, cell.r)) {
       this.audio.deny();
       return;
@@ -283,13 +301,43 @@ export class GameScene extends Phaser.Scene {
       this.audio.deny();
       return;
     }
+    // Energy gate: a tower needs enough available strength on its tile for its
+    // tier. Conduits (sources) carry no requirement and plant anywhere buildable.
+    if (!def.isSource && !this.energy.canPower(cell.c, cell.r, def.tier ?? 0)) {
+      this.audio.deny();
+      return;
+    }
     this.spendGold(def.cost);
     this.grid.occupy(cell.c, cell.r);
     const pos = this.grid.toScreen(cell.c, cell.r);
-    const tower = new Tower(this, def, cell, pos, this.rangePxFor(def));
-    this.towers.push(tower);
+    const rangePx = def.range ? this.rangePxFor(def) : 0;
+    const piece = new Tower(this, def, cell, pos, rangePx);
+    this.towers.push(piece);
+
+    // Register the piece with the energy field, then recompute everything.
+    if (def.isSource) this.energy.addSource(cell.c, cell.r, ENERGY.conduitOutput);
+    else this.energy.addConsumer(cell.c, cell.r, ENERGY.drainByTier[def.tier] ?? 0);
+    this.refreshEnergy();
+
     this.audio.place();
     this.spawnPlaceDust(pos);
+  }
+
+  // Recompute the field and push the consequences everywhere it shows: the glow
+  // layer, each piece's powered/brownout state, and the live build overlay.
+  refreshEnergy() {
+    this.energy.recompute();
+    this.energyView.redraw();
+    this.updatePoweredStates();
+    if (this.placement.active) this.placement.refreshOverlay();
+  }
+
+  updatePoweredStates() {
+    for (const t of this.towers) {
+      const powered = t.def.isSource ||
+        this.energy.availableAt(t.cell.c, t.cell.r) >= (t.def.tier ?? 0);
+      t.setPowered(powered);
+    }
   }
 
   spawnPlaceDust(pos) {
@@ -324,6 +372,21 @@ export class GameScene extends Phaser.Scene {
     } else {
       this.deselectTower();
     }
+    // Debug readout: show the tapped tile's raw energy numbers.
+    this.showTileInfo(cell);
+  }
+
+  // A small, fixed-position readout (numbers are fine here — kept off the main
+  // view). Auto-hides after a moment.
+  showTileInfo(cell) {
+    const gen = this.energy.generatedAt(cell.c, cell.r);
+    const avail = this.energy.availableAt(cell.c, cell.r);
+    const cap = Math.max(0, Math.floor(avail));
+    this.tileInfo.setText(
+      `tile ${cell.c},${cell.r}   generated ${gen}   available ${avail}   (powers ≤ T${cap})`);
+    this.tileInfo.setVisible(true);
+    if (this._tileInfoTimer) this._tileInfoTimer.remove();
+    this._tileInfoTimer = this.time.delayedCall(2600, () => this.tileInfo.setVisible(false));
   }
 
   towerAt(cell) {
@@ -346,6 +409,12 @@ export class GameScene extends Phaser.Scene {
   }
 
   drawRangeRing(tower) {
+    // Conduits have no range — selecting one just offers the sell option.
+    if (!tower.rangePx) {
+      this.rangeRing.clear();
+      this.rangeRing.setVisible(false);
+      return;
+    }
     const color = PALETTE.tileBuildOk;
     this.rangeRing.clear();
     this.rangeRing.lineStyle(2, color, 0.6);
@@ -368,7 +437,14 @@ export class GameScene extends Phaser.Scene {
     if (idx >= 0) this.towers.splice(idx, 1);
     this.deselectTower();
     this.spawnPlaceDust({ x: tower.x, y: tower.y });
+
+    // Deregister from the energy field and recompute (neighbours may recover or
+    // a removed conduit may shrink the powered zone).
+    if (tower.def.isSource) this.energy.removeSourceAt(tower.cell.c, tower.cell.r);
+    else this.energy.removeConsumerAt(tower.cell.c, tower.cell.r);
     tower.destroy();
+    this.refreshEnergy();
+
     this.addGold(refund);
     this.audio.sell();
   }

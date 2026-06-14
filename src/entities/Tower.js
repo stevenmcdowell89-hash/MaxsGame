@@ -26,10 +26,16 @@ export class Tower extends Phaser.GameObjects.Container {
     this.def = def;
     this.cell = cell;
     this.rangePx = rangePx;
+    this.tier = def.tier ?? 0;
     this.cooldown = 0;
     this.charge = 0;
     this.faceRight = false;
     this.glow = null;
+    this.warn = null;
+    // Powered until the energy field says otherwise. An INACTIVE (browned-out)
+    // tower stops firing and shows a warning; the scene drives this via
+    // setPowered() whenever the field is recomputed.
+    this.powered = true;
     this.defaultLeft = (def.facing ?? 'left') === 'left';
 
     this.sprite = scene.add.sprite(0, 0, def.textureKey);
@@ -78,8 +84,52 @@ export class Tower extends Phaser.GameObjects.Container {
   }
 
   update(delta, enemies, fire, audio) {
+    // Conduits never attack; browned-out towers can't fire until repowered.
+    if (this.def.noAttack || !this.powered) return;
     if (this.def.chargeTime) this.updateCharge(delta, enemies, fire, audio);
     else this.updateInstant(delta, enemies, fire, audio);
+  }
+
+  // Energy gate: when a tower's tile drops below its tier requirement it browns
+  // out — tint red, dim, halt firing and raise a warning marker. Conduits are
+  // sources, so they never brown out (their visual stays put).
+  setPowered(on) {
+    if (on === this.powered) return;
+    this.powered = on;
+    if (this.def.noAttack) return;
+    if (on) {
+      this.sprite.clearTint();
+      this.sprite.setAlpha(1);
+      this.hideWarn();
+    } else {
+      this.charge = 0;
+      this.hideGlow();
+      this.sprite.setTint(0xff5a5a);
+      this.sprite.setAlpha(0.65);
+      this.showWarn();
+    }
+  }
+
+  // --- brownout warning marker ------------------------------------------
+  showWarn() {
+    if (!this.warn) {
+      const top = -(this.sprite.displayHeight * (this.sprite.originY ?? 0.92) + 14);
+      this.warn = this.scene.add.text(0, top, '⚠', {
+        fontFamily: 'system-ui, sans-serif', fontSize: '28px',
+        color: '#ffd23a', fontStyle: 'bold',
+      }).setOrigin(0.5);
+      this.warn.setShadow(0, 0, '#000000', 5);
+      this.add(this.warn);
+      this.warnTween = this.scene.tweens.add({
+        targets: this.warn, alpha: { from: 1, to: 0.35 }, scale: { from: 1, to: 1.15 },
+        duration: 520, yoyo: true, repeat: -1,
+      });
+    }
+    this.warn.setVisible(true);
+  }
+
+  hideWarn() {
+    if (this.warn) this.warn.setVisible(false);
   }
 
   // --- charge model (laser) ---------------------------------------------
@@ -168,6 +218,7 @@ export class Tower extends Phaser.GameObjects.Container {
 
   destroy(fromScene) {
     if (this.glow) { this.glow.destroy(); this.glow = null; }
+    if (this.warnTween) { this.warnTween.stop(); this.warnTween = null; }
     super.destroy(fromScene);
   }
 }

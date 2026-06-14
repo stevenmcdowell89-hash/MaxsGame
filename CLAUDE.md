@@ -71,19 +71,22 @@ src/
     SaveManager.js         # localStorage read/write (versioned schema)
   data/                    # ALL tunable content lives here (no logic)
     game.js                # global tuning, ISO tile size, PALETTE, DEPTH bands
-    towers.js              # tower definitions
+    towers.js              # tower + conduit definitions (incl. tier / energy fields)
     enemies.js             # enemy definitions
     levels.js              # grid size + enemy path per level
     waves.js               # wave/spawn schedules per level
+    energy.js              # ALL energy-system tunables (sources, drain, visuals)
   rendering/
     iso.js                 # pure isometric projection math (no state)
     textures.js            # generates placeholder textures from data (ART SEAM)
   systems/
     IsoGrid.js             # stateful board: path/occupancy/centering, cell<->screen
-    PlacementManager.js    # build-mode interaction + highlight/range preview
+    PlacementManager.js    # build-mode interaction + energy-aware placement overlay
     WaveManager.js         # spawn scheduling driven by data/waves.js
     TargetingSystem.js     # tower target-selection policy
     CameraController.js    # pan (drag / two-finger) + zoom (pinch/wheel/buttons)
+    EnergyField.js         # stateful energy model: generated/available per tile
+    EnergyView.js          # translucent banded field-glow layer over the terrain
   audio/
     AudioManager.js        # Web Audio synth (all SFX, no files)
   entities/
@@ -118,6 +121,16 @@ decide *how*.
 - **Rendering math is pure** (`rendering/iso.js`); board *state* is in
   `systems/IsoGrid.js`. Depth sorting: tiles sit in a low band; everything else
   is depth-sorted by its screen-Y each frame (`DEPTH` in `data/game.js`).
+- **Energy layers on top of money, not replacing it.** Money still buys; energy
+  gates WHERE/HOW MANY pieces can run. `systems/EnergyField.js` is pure spatial
+  state (like `IsoGrid`): sources (the core + placed conduits) radiate strength
+  that falls off by Chebyshev distance — `generated = MAX over sources of
+  (output − distance)` — and each placed tower drains its 8 neighbours, giving
+  `available = generated − drains`. A tower needs `available ≥ its tier` to be
+  placed and to keep firing; drop below and it browns out (`Tower.setPowered`).
+  `GameScene` owns the field, calls `refreshEnergy()` on every build/sell (the
+  only times it changes), and pushes the result to the glow (`EnergyView`),
+  tower power state, and the placement overlay. All tuning is in `data/energy.js`.
 - **Camera = the world; HUD is fixed.** The board can be larger than the screen,
   so `GameScene` pans/zooms its main camera via `CameraController` (drag or
   two-finger to pan, pinch/wheel/HUD `+`/`−` to zoom; clamped to the board). The
@@ -149,13 +162,18 @@ All in `src/data/`. Quick reference (full field docs are in each file):
 - **`game.js`** — `GAME` (resolution, starting lives/gold), `ISO` (tile size),
   `PALETTE` (colours), `DEPTH` (render bands).
 - **`towers.js`** — `TOWERS[id]`: `cost`, `range` (tiles), `fireRate` (ms),
-  `damage`, `projectileSpeed` (px/s), `textureKey`, `projectileKey`, colours.
+  `damage`, `projectileSpeed` (px/s), `textureKey`, `projectileKey`, colours,
+  plus energy fields `tier` (power gate, never stats), `isSource`/`noAttack`
+  (the conduit), and `placeholder` ({shape,color}) for the temp art.
 - **`enemies.js`** — `ENEMIES[id]`: `maxHp`, `speed` (tiles/s), `reward`,
   `damage` (lives lost at base), `textureKey`, colours.
 - **`levels.js`** — `LEVELS[id]`: `cols`, `rows`, and `path` (ordered list of
   `{c,r}` cells from spawn to base). Any non-path cell is buildable.
 - **`waves.js`** — `WAVES[levelId]`: array of waves; each has a `reward` and
   `groups` of `{ type, count, interval, delay? }`.
+- **`energy.js`** — `ENERGY`: `coreOutput`/`conduitOutput` (source strengths),
+  `drainByTier` + `drainOffsets` (per-tower consumption), and the glow/overlay
+  colours. The one place to balance the power layer.
 
 Common edits:
 - **Tweak difficulty:** numbers in `towers.js` / `enemies.js` / `waves.js`.

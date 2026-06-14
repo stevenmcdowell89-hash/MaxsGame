@@ -19,7 +19,9 @@ export class HUDScene extends Phaser.Scene {
   create() {
     this.buildActive = false;
     this.waveReady = false;
-    this.tower = null;
+    this.selectedId = null;       // which piece the build bar has selected
+    this.pieceButtons = {};       // id -> button api (built on STATE_INIT)
+    this._pieces = null;
 
     this.buildTopBar();
     this.buildBottomBar();
@@ -53,22 +55,17 @@ export class HUDScene extends Phaser.Scene {
     const h = GAME.height;
     this.add.rectangle(0, h - 96, w, 96, PALETTE.hudPanel, 0.85).setOrigin(0, 0);
 
-    // Build button (left).
-    this.buildBtn = this.makeButton(150, h - 48, 240, 68, 'BUILD', () => {
-      EventBus.emit(EVENTS.REQUEST_BUILD_MODE, {
-        active: !this.buildActive,
-        towerId: this.tower ? this.tower.id : undefined,
-      });
-    });
+    // The piece palette (left) is built from data on STATE_INIT — see
+    // buildPalette(). It replaces the old single BUILD button.
 
-    // Sell button (centre-left): only visible while a built tower is selected.
-    this.sellBtn = this.makeButton(435, h - 48, 250, 68, 'SELL', () => {
+    // Sell button (centre-left): only visible while a built piece is selected.
+    this.sellBtn = this.makeButton(545, h - 48, 120, 68, 'SELL', () => {
       EventBus.emit(EVENTS.REQUEST_SELL_TOWER);
-    });
+    }, { fontSize: '20px' });
     this.sellBtn.container.setVisible(false);
 
     // Start Wave button (right-centre).
-    this.startBtn = this.makeButton(w / 2 + 120, h - 48, 280, 68, 'START WAVE', () => {
+    this.startBtn = this.makeButton(770, h - 48, 250, 68, 'START WAVE', () => {
       EventBus.emit(EVENTS.REQUEST_START_WAVE);
     });
 
@@ -87,11 +84,12 @@ export class HUDScene extends Phaser.Scene {
   }
 
   // A reusable touch button. Returns an object with helpers to update it.
-  makeButton(cx, cy, w, h, label, onTap) {
+  makeButton(cx, cy, w, h, label, onTap, opts = {}) {
     const container = this.add.container(cx, cy);
     const bg = this.add.rectangle(0, 0, w, h, 0x2b2748, 1).setStrokeStyle(2, 0x4a4470);
     const txt = this.add.text(0, 0, label, {
-      fontFamily: FONT, fontSize: '24px', color: PALETTE.hudText, fontStyle: 'bold',
+      fontFamily: FONT, fontSize: opts.fontSize ?? '24px', color: PALETTE.hudText,
+      fontStyle: 'bold', align: 'center',
     }).setOrigin(0.5);
     container.add([bg, txt]);
 
@@ -131,6 +129,52 @@ export class HUDScene extends Phaser.Scene {
     return api;
   }
 
+  // ----------------------------------------------------- piece palette ----
+
+  // Build the left-hand row of piece buttons from the data the GameScene sends.
+  // Built once; STATE_INIT can republish (e.g. on restart) without rebuilding.
+  buildPalette(pieces) {
+    if (this._paletteBuilt) return;
+    this._paletteBuilt = true;
+    this._pieces = pieces;
+
+    const h = GAME.height;
+    const centers = [64, 182, 300, 418];
+    pieces.slice(0, centers.length).forEach((p, i) => {
+      const short = p.isSource ? 'CONDUIT' : p.name.split(' ')[0].toUpperCase();
+      const sub = p.isSource ? `⚡ ${p.cost}g` : `T${p.tier} · ${p.cost}g`;
+      const btn = this.makeButton(centers[i], h - 48, 110, 72, `${short}\n${sub}`, () => {
+        // Toggle: tapping the selected piece exits build mode; tapping another
+        // switches to it.
+        const active = !(this.buildActive && this.selectedId === p.id);
+        EventBus.emit(EVENTS.REQUEST_BUILD_MODE, { active, towerId: p.id });
+      }, { fontSize: '15px' });
+      this.pieceButtons[p.id] = btn;
+    });
+
+    this.refreshPalette();
+  }
+
+  // Highlight the active piece (others go inactive).
+  refreshPaletteActive() {
+    for (const id of Object.keys(this.pieceButtons)) {
+      this.pieceButtons[id].setActive(this.buildActive && this.selectedId === id);
+    }
+  }
+
+  // Enable/disable each piece button by affordability (the selected piece stays
+  // enabled so it can be toggled back off even when funds dip).
+  refreshPalette() {
+    if (!this._pieces) return;
+    const gold = this._gold ?? 0;
+    for (const p of this._pieces) {
+      const btn = this.pieceButtons[p.id];
+      if (!btn) continue;
+      const affordable = gold >= p.cost;
+      btn.setEnabled(affordable || (this.buildActive && this.selectedId === p.id));
+    }
+  }
+
   // --------------------------------------------------------- end overlay ----
 
   buildOverlay() {
@@ -158,20 +202,21 @@ export class HUDScene extends Phaser.Scene {
     };
 
     on(EVENTS.STATE_INIT, (s) => {
-      this.tower = s.tower;
-      this.setLives(s.lives);
+      if (s.pieces) this.buildPalette(s.pieces);
       this.setGold(s.gold);
+      this.setLives(s.lives);
       this.setWave(s.wave, s.totalWaves);
       this.bestText.setText(`BEST: WAVE ${s.best}`);
       this.setMuted(s.muted);
       this.overlay.setVisible(false);
       this.buildActive = false;
-      this.buildBtn.setActive(false);
+      this.selectedId = null;
+      this.refreshPaletteActive();
+      this.refreshPalette();
       this.hideSell();
-      this.refreshBuildLabel();
     });
 
-    on(EVENTS.GOLD_CHANGED, (g) => { this.setGold(g); this.refreshBuildLabel(); });
+    on(EVENTS.GOLD_CHANGED, (g) => { this.setGold(g); this.refreshPalette(); });
     on(EVENTS.LIVES_CHANGED, (l) => this.setLives(l));
     on(EVENTS.WAVE_CHANGED, ({ wave, totalWaves }) => this.setWave(wave, totalWaves));
     on(EVENTS.WAVE_READY, (ready) => {
@@ -179,9 +224,11 @@ export class HUDScene extends Phaser.Scene {
       this.startBtn.setEnabled(ready);
       this.startBtn.setLabel(ready ? 'START WAVE' : 'IN PROGRESS…');
     });
-    on(EVENTS.BUILD_MODE_CHANGED, (active) => {
+    on(EVENTS.BUILD_MODE_CHANGED, ({ active, pieceId }) => {
       this.buildActive = active;
-      this.buildBtn.setActive(active);
+      this.selectedId = active ? pieceId : null;
+      this.refreshPaletteActive();
+      this.refreshPalette();
       if (active) this.hideSell();
     });
     on(EVENTS.TOWER_SELECTED, ({ refund }) => this.showSell(refund));
@@ -203,13 +250,6 @@ export class HUDScene extends Phaser.Scene {
   setGold(v) { this.goldText.setText(`GOLD ${v}`); this._gold = v; }
   setWave(w, total) { this.waveText.setText(`WAVE ${w} / ${total}`); }
   setMuted(m) { this.muteBtn.setActive(false); this.muteBtn.setLabel(m ? 'MUTED' : 'SOUND'); }
-
-  refreshBuildLabel() {
-    if (!this.tower) return;
-    const affordable = (this._gold ?? 0) >= this.tower.cost;
-    this.buildBtn.setLabel(`BUILD  (${this.tower.cost})`);
-    this.buildBtn.setEnabled(affordable || this.buildActive);
-  }
 
   showOverlay(win, wave, best) {
     this.overlayTitle.setText(win ? 'VICTORY!' : 'DEFEATED');

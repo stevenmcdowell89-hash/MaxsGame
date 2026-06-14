@@ -104,6 +104,54 @@ function makeBotTexture(scene, key, { color, accent, w, h }) {
   g.destroy();
 }
 
+// An OBVIOUSLY-TEMPORARY placeholder piece: a single flat geometric shape with
+// a dark outline and a contact shadow, standing on its tile. Distinct shapes
+// keep the new energy pieces (tier-1 triangle, tier-3 square, conduit hexagon)
+// readable until real art replaces them under the same texture key. Origin is
+// handled by the entity (bottom-centre), matching makeBotTexture.
+function makeShapeTexture(scene, key, { shape, color, w = 64, h = 84 }) {
+  const g = scene.make.graphics({ x: 0, y: 0, add: false });
+  const cx = w / 2;
+  const outline = 0x14141f;
+  const top = 8;
+  const bottom = h - 12;
+  const rad = w * 0.36;
+
+  // Contact shadow at the feet.
+  g.fillStyle(0x000000, 0.25);
+  g.fillEllipse(cx, h - 6, w * 0.6, 10);
+
+  g.fillStyle(color, 1);
+  g.lineStyle(3, outline, 1);
+
+  if (shape === 'triangle') {
+    g.fillTriangle(cx, top, cx + rad, bottom, cx - rad, bottom);
+    g.strokeTriangle(cx, top, cx + rad, bottom, cx - rad, bottom);
+  } else if (shape === 'square') {
+    const s = w * 0.62;
+    g.fillRect(cx - s / 2, bottom - s, s, s);
+    g.strokeRect(cx - s / 2, bottom - s, s, s);
+  } else {
+    // hexagon (default) — flat-topped, pointing up/down.
+    const my = (top + bottom) / 2;
+    const ry = (bottom - top) / 2;
+    const rx = w * 0.42;
+    const pts = [
+      { x: cx, y: my - ry },
+      { x: cx + rx, y: my - ry * 0.5 },
+      { x: cx + rx, y: my + ry * 0.5 },
+      { x: cx, y: my + ry },
+      { x: cx - rx, y: my + ry * 0.5 },
+      { x: cx - rx, y: my - ry * 0.5 },
+    ];
+    g.fillPoints(pts, true);
+    g.strokePoints(pts, true);
+  }
+
+  g.generateTexture(key, w, h);
+  g.destroy();
+}
+
 // A glowing projectile bolt.
 function makeBoltTexture(scene, key, color) {
   const r = 9;
@@ -184,10 +232,13 @@ export function generatePlaceholderTextures(scene) {
   // under that key (see BootScene.preload). This is the art seam in action.
   for (const t of TOWER_LIST) {
     if (!scene.textures.exists(t.textureKey)) {
-      makeBotTexture(scene, t.textureKey, { color: t.color, accent: t.accent, w: 64, h: 92 });
+      // Energy pieces declare a flat `placeholder` shape; classic towers fall
+      // back to the little robot. Either way a real PNG under the same key wins.
+      if (t.placeholder) makeShapeTexture(scene, t.textureKey, { ...t.placeholder });
+      else makeBotTexture(scene, t.textureKey, { color: t.color, accent: t.accent, w: 64, h: 92 });
     }
-    if (!scene.textures.exists(t.projectileKey)) {
-      makeBoltTexture(scene, t.projectileKey, t.color);
+    if (t.projectileKey && !scene.textures.exists(t.projectileKey)) {
+      makeBoltTexture(scene, t.projectileKey, t.color ?? 0xffffff);
     }
   }
   for (const e of ENEMY_LIST) {

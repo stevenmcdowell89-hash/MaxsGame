@@ -33,6 +33,6 @@ export const EVENTS = {
   REQUEST_ZOOM: 'cmd:zoom',              // dir: +1 (in) / -1 (out)
 
   // GameScene -> HUD (feedback)
-  BUILD_MODE_CHANGED: 'fx:buildMode', // active:boolean
+  BUILD_MODE_CHANGED: 'fx:buildMode', // { active:boolean, pieceId }
   MUTE_CHANGED: 'fx:mute',            // muted:boolean
 };
