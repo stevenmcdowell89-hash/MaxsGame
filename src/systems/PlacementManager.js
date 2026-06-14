@@ -38,10 +38,10 @@ export class PlacementManager {
     this.rangePreview.setVisible(false);
   }
 
-  // Called from the scene's pointer move handler.
-  onPointerMove(pointer) {
+  // Called from the scene's pointer move handler with camera world coords.
+  onPointerMove(worldX, worldY) {
     if (!this.active) return;
-    const cell = this.grid.cellAt(pointer.worldX, pointer.worldY);
+    const cell = this.grid.cellAt(worldX, worldY);
     if (!cell) {
       this.highlight.setVisible(false);
       this.rangePreview.setVisible(false);
@@ -84,11 +84,12 @@ export class PlacementManager {
     }
   }
 
-  // Called from the scene's pointer-up handler. Returns true if it consumed
-  // the tap (i.e. a build was attempted), so the scene can skip other handling.
-  onPointerUp(pointer) {
+  // Called from the scene's pointer-up handler with camera world coords. Returns
+  // true if it consumed the tap (a build was attempted) so the scene can skip
+  // other handling.
+  onPointerUp(worldX, worldY) {
     if (!this.active) return false;
-    const cell = this.grid.cellAt(pointer.worldX, pointer.worldY);
+    const cell = this.grid.cellAt(worldX, worldY);
     if (!cell) return false;
     this.scene.tryBuildTower(cell, this.towerDef);
     // Re-draw highlight to reflect new occupancy / affordability.

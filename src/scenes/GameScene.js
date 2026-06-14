@@ -18,6 +18,7 @@ import { AudioManager } from '../audio/AudioManager.js';
 import { IsoGrid } from '../systems/IsoGrid.js';
 import { PlacementManager } from '../systems/PlacementManager.js';
 import { WaveManager } from '../systems/WaveManager.js';
+import { CameraController } from '../systems/CameraController.js';
 
 import { Enemy } from '../entities/Enemy.js';
 import { Tower } from '../entities/Tower.js';
@@ -69,6 +70,9 @@ export class GameScene extends Phaser.Scene {
     this.placement = new PlacementManager(this, this.grid);
     this.waves = new WaveManager(WAVES[this.level.id], (typeId) => this.spawnEnemy(typeId));
 
+    // ---- Camera (pan + zoom across the larger board) ----
+    this.setupCamera();
+
     // ---- Input ----
     this.setupInput();
 
@@ -107,19 +111,80 @@ export class GameScene extends Phaser.Scene {
     this.tweens.add({ targets: this.base, y: bp.y - 4, duration: 1200, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
   }
 
+  // --------------------------------------------------------------- camera ----
+
+  setupCamera() {
+    const cam = this.cameras.main;
+    const bounds = this.grid.getBounds(48);
+    cam.setBounds(bounds.x, bounds.y, bounds.width, bounds.height);
+
+    // Zoom at which the whole board fits the viewport — the most zoomed-out we
+    // allow (and the starting view, so the big map reads at a glance).
+    const fitZoom = Math.min(GAME.width / bounds.width, GAME.height / bounds.height);
+    const minZoom = Math.min(fitZoom, 1);
+
+    this.camCtl = new CameraController(this, { minZoom, maxZoom: 1.5 });
+    cam.setZoom(Phaser.Math.Clamp(fitZoom, minZoom, 1.5));
+    cam.centerOn(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+  }
+
+  // Convert a pointer (screen space) to world space via the main camera, so
+  // building/selection stay correct at any pan/zoom.
+  worldPoint(pointer) {
+    return this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+  }
+
+  // The world camera now fills the whole viewport (it can pan/zoom under the
+  // translucent HUD bars), so a tap on a HUD button would otherwise also hit a
+  // board cell behind it. Treat only gestures that START outside the HUD bands
+  // as "world" gestures; taps on the bars belong to the HUD alone.
+  isOverHud(pointer) {
+    return pointer.y < 56 || pointer.y > GAME.height - 96;
+  }
+
   // ---------------------------------------------------------------- input ----
 
   setupInput() {
     // Unlock Web Audio on the first interaction (autoplay policy).
     this.input.once('pointerdown', () => this.audio.unlock());
 
-    this.input.on('pointermove', (pointer) => this.placement.onPointerMove(pointer));
+    this.input.on('pointerdown', (pointer) => {
+      // A gesture that starts on the HUD bars is the HUD's, not the world's.
+      this._worldGesture = !this.isOverHud(pointer);
+      if (this._worldGesture) this.camCtl.onPointerDown(pointer);
+    });
+
+    this.input.on('pointermove', (pointer) => {
+      // Desktop hover affordance: track the build highlight even with no button
+      // held, as long as the pointer is over the board (not the HUD bars).
+      if (this.placement.active && !pointer.isDown) {
+        if (!this.isOverHud(pointer)) {
+          const wp = this.worldPoint(pointer);
+          this.placement.onPointerMove(wp.x, wp.y);
+        }
+        return;
+      }
+      if (!this._worldGesture) return;
+      const gesture = this.camCtl.onPointerMove(pointer);
+      // Only update the build highlight when the camera isn't being panned.
+      if (!gesture && this.placement.active) {
+        const wp = this.worldPoint(pointer);
+        this.placement.onPointerMove(wp.x, wp.y);
+      }
+    });
+
     this.input.on('pointerup', (pointer) => {
+      if (!this._worldGesture) return;
+      // A pan/pinch release isn't a tap — don't build or select on it.
+      if (this.camCtl.onPointerUp(pointer)) return;
+      const wp = this.worldPoint(pointer);
       // In build mode the placement manager consumes the tap. Otherwise, treat
       // it as a tower inspect/deselect tap.
-      const consumed = this.placement.onPointerUp(pointer);
-      if (!consumed) this.handleSelectTap(pointer);
+      const consumed = this.placement.onPointerUp(wp.x, wp.y);
+      if (!consumed) this.handleSelectTap(wp.x, wp.y);
     });
+
+    this.input.on('wheel', (pointer, _objs, _dx, dy) => this.camCtl.onWheel(dy, pointer));
   }
 
   bindEvents() {
@@ -129,6 +194,9 @@ export class GameScene extends Phaser.Scene {
       // Inspecting and building are mutually exclusive interactions.
       if (active) this.deselectTower();
       this.placement.setMode(active, def);
+      // In build mode a one-finger drag aims the highlight, so disable one-finger
+      // panning (two-finger pinch/pan still works); restore it otherwise.
+      this.camCtl.setSingleDragPan(!active);
       EventBus.emit(EVENTS.BUILD_MODE_CHANGED, active);
     };
     // HUD boots after this scene on first load, so it can miss the STATE_INIT
@@ -136,6 +204,7 @@ export class GameScene extends Phaser.Scene {
     this._onHudReady = () => this.publishInit();
     this._onStartWave = () => this.startWave();
     this._onSellTower = () => this.sellSelectedTower();
+    this._onZoom = (dir) => this.camCtl.zoomStep(dir);
     this._onRestart = () => this.scene.restart();
     this._onToggleMute = () => {
       const muted = this.audio.setMuted(!this.audio.muted);
@@ -147,6 +216,7 @@ export class GameScene extends Phaser.Scene {
     EventBus.on(EVENTS.REQUEST_BUILD_MODE, this._onBuildMode);
     EventBus.on(EVENTS.REQUEST_START_WAVE, this._onStartWave);
     EventBus.on(EVENTS.REQUEST_SELL_TOWER, this._onSellTower);
+    EventBus.on(EVENTS.REQUEST_ZOOM, this._onZoom);
     EventBus.on(EVENTS.REQUEST_RESTART, this._onRestart);
     EventBus.on(EVENTS.REQUEST_TOGGLE_MUTE, this._onToggleMute);
 
@@ -155,6 +225,7 @@ export class GameScene extends Phaser.Scene {
       EventBus.off(EVENTS.REQUEST_BUILD_MODE, this._onBuildMode);
       EventBus.off(EVENTS.REQUEST_START_WAVE, this._onStartWave);
       EventBus.off(EVENTS.REQUEST_SELL_TOWER, this._onSellTower);
+      EventBus.off(EVENTS.REQUEST_ZOOM, this._onZoom);
       EventBus.off(EVENTS.REQUEST_RESTART, this._onRestart);
       EventBus.off(EVENTS.REQUEST_TOGGLE_MUTE, this._onToggleMute);
     });
@@ -241,9 +312,9 @@ export class GameScene extends Phaser.Scene {
 
   // A tap that wasn't consumed by build mode: select a built tower (showing its
   // range + a sell option) or deselect when tapping elsewhere on the board.
-  handleSelectTap(pointer) {
+  handleSelectTap(worldX, worldY) {
     if (this.gameOver) return;
-    const cell = this.grid.cellAt(pointer.worldX, pointer.worldY);
+    const cell = this.grid.cellAt(worldX, worldY);
     // Off-board taps (e.g. on the HUD bars) shouldn't change the selection.
     if (!cell) return;
     const tower = this.towerAt(cell);

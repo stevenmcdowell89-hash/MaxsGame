@@ -30,6 +30,7 @@ export const EVENTS = {
   REQUEST_RESTART: 'cmd:restart',
   REQUEST_TOGGLE_MUTE: 'cmd:toggleMute', // -> emits MUTE_CHANGED back
   REQUEST_SELL_TOWER: 'cmd:sellTower',   // sell the currently selected tower
+  REQUEST_ZOOM: 'cmd:zoom',              // dir: +1 (in) / -1 (out)
 
   // GameScene -> HUD (feedback)
   BUILD_MODE_CHANGED: 'fx:buildMode', // active:boolean

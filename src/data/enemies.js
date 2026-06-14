@@ -19,7 +19,7 @@ export const ENEMIES = {
     name: 'Scrapling',
     textureKey: 'enemy-scrapling',
     maxHp: 60,
-    speed: 1.5,
+    speed: 3.0, // tuned up for the larger 22x18 board's longer path
     reward: 12,
     damage: 1,
     color: 0xff8a6b,
