@@ -55,7 +55,10 @@ export class Enemy extends Phaser.GameObjects.Container {
   }
 
   takeDamage(amount, audio) {
-    if (!this.alive) return;
+    // `active` guards against a late projectile striking an enemy that has
+    // already been destroyed (e.g. one that just reached the base); touching a
+    // destroyed object's scene/children would otherwise throw and freeze the loop.
+    if (!this.alive || !this.active) return;
     this.hp -= amount;
 
     // Hit flash.

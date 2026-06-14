@@ -14,6 +14,9 @@ export const GAME = {
   // Economy / lives for the player.
   startingLives: 20,
   startingGold: 100,
+
+  // Fraction of a tower's build cost refunded when it is sold.
+  sellRefund: 0.5,
 };
 
 // Isometric tile dimensions (2:1 "gentle" isometric). Used by the renderer and

@@ -20,6 +20,8 @@ export const EVENTS = {
   WAVE_CHANGED: 'state:wave',   // { wave, totalWaves }
   WAVE_READY: 'state:waveReady',// canStart:boolean
   GAME_OVER: 'state:gameOver',  // { win:boolean, wave:number, best:number }
+  TOWER_SELECTED: 'state:towerSelected',     // { refund:number }
+  TOWER_DESELECTED: 'state:towerDeselected',
 
   // HUD -> GameScene (player intent)
   HUD_READY: 'cmd:hudReady',           // HUD finished setup; ask for initial state
@@ -27,6 +29,7 @@ export const EVENTS = {
   REQUEST_START_WAVE: 'cmd:startWave',
   REQUEST_RESTART: 'cmd:restart',
   REQUEST_TOGGLE_MUTE: 'cmd:toggleMute', // -> emits MUTE_CHANGED back
+  REQUEST_SELL_TOWER: 'cmd:sellTower',   // sell the currently selected tower
 
   // GameScene -> HUD (feedback)
   BUILD_MODE_CHANGED: 'fx:buildMode', // active:boolean
