@@ -38,5 +38,6 @@ const game = new Phaser.Game(config);
 
 // Debug handles for the browser console (and automated smoke tests). Not used
 // by game logic — safe to remove. Handy when iterating with my son.
+// (Energy system live on this branch — see data/energy.js for tuning.)
 window.__game = game;
 window.__bus = EventBus;
