@@ -1,20 +1,19 @@
 // ---------------------------------------------------------------------------
-// PlacementManager: handles the "build a piece" interaction (towers + conduit).
+// PlacementManager: the "build a piece" interaction (towers + conduit).
 //
 //   - Toggle build mode on/off (driven by the HUD build bar).
 //   - While active it paints an energy-aware placement overlay over the board:
-//       * every buildable tile is tinted GREEN if the selected piece would be
-//         powered there (available strength >= its tier) or RED if it would be
-//         browned out. Conduits (tier 0) are powered anywhere.
-//       * the hovered cell gets a stronger highlight (also folding in buildable
-//         + affordable) plus a range preview, and the piece's footprint ghost:
-//         a tower shows the 8 tiles it will DRAIN, a conduit shows the tiles it
-//         will BOOST.
-//   - On tap it validates and asks the scene to build.
+//       * every buildable tile is tinted GREEN if the selected piece can be
+//         placed there (enough generated energy for its tier AND its footprint
+//         is clear of other pieces' reservations) or RED if not.
+//       * the hovered cell gets a stronger highlight (also folding in afford),
+//         a range preview, and a FOOTPRINT ghost — the cells the piece will
+//         reserve, by tier (a tier-1 reserves only its own tile, a tier-3 /
+//         conduit the full 8 around it).
+//   - On tap it asks the scene to build.
 //
-// It draws its own graphics but never creates pieces itself — it calls
-// scene.tryBuildPiece(cell, def) so the scene stays the owner of entities,
-// economy and the energy field.
+// It never creates pieces itself — it calls scene.tryBuildPiece(cell, def) so
+// the scene stays the owner of entities, economy and the energy field.
 // ---------------------------------------------------------------------------
 
 import { PALETTE, DEPTH, ISO } from '../data/game.js';
@@ -27,12 +26,12 @@ export class PlacementManager {
     this.active = false;
     this.pieceDef = null;
 
-    // Full-board green/red power overlay (lowest, under the hovered highlight).
+    // Full-board green/red overlay (lowest, under the hovered highlight).
     this.overlay = scene.add.graphics();
     this.overlay.setDepth(DEPTH.tiles + 600);
     this.overlay.setVisible(false);
 
-    // Footprint ghost (drain / boost) for the hovered cell.
+    // Footprint ghost for the hovered cell.
     this.ghost = scene.add.graphics();
     this.ghost.setDepth(DEPTH.tiles + 601);
     this.ghost.setVisible(false);
@@ -65,7 +64,6 @@ export class PlacementManager {
 
   // ----------------------------------------------------------- helpers ----
 
-  // Trace a tile's iso diamond onto a Graphics (caller fills/strokes).
   diamondPath(g, pos) {
     const w = ISO.tileWidth;
     const h = ISO.tileHeight;
@@ -77,16 +75,14 @@ export class PlacementManager {
     g.closePath();
   }
 
-  // Would the selected piece be powered on this cell?
-  poweredOn(c, r) {
-    const def = this.pieceDef;
-    return def.isSource || this.scene.energy.canPower(c, r, def.tier ?? 0);
+  canPlaceOn(c, r) {
+    return this.scene.energy.canPlace(c, r, this.pieceDef);
   }
 
   // --------------------------------------------------------- overlays -----
 
-  // Green/red power tint across every buildable tile. Redrawn whenever the field
-  // changes (refreshOverlay) so consumption/expansion shows live while building.
+  // Green/red placeability tint across every buildable tile. Redrawn whenever
+  // the field changes (refreshOverlay) so it stays live while building.
   drawOverlay() {
     const g = this.overlay;
     g.clear();
@@ -98,7 +94,7 @@ export class PlacementManager {
     for (let r = 0; r < this.grid.rows; r++) {
       for (let c = 0; c < this.grid.cols; c++) {
         if (!this.grid.isBuildable(c, r)) continue;
-        const ok = this.poweredOn(c, r);
+        const ok = this.canPlaceOn(c, r);
         const pos = this.grid.toScreen(c, r);
         g.fillStyle(ok ? okColor : badColor, ok ? okAlpha : badAlpha);
         this.diamondPath(g, pos);
@@ -112,35 +108,21 @@ export class PlacementManager {
     if (this.active) this.drawOverlay();
   }
 
-  // Outline the tiles the hovered piece will affect: a tower's 8-tile drain
-  // footprint, or a conduit's boost radius (where it raises generated strength).
+  // Outline the cells the hovered piece will RESERVE (its footprint by tier),
+  // plus its own tile. Amber for a tower, cyan for a conduit.
   drawFootprint(cell) {
     const g = this.ghost;
     g.clear();
     const def = this.pieceDef;
-    const { drainColor, sourceColor, footprintFill, footprintLine } = ENERGY.overlay;
+    const color = def.isSource ? ENERGY.overlay.sourceColor : ENERGY.overlay.drawColor;
+    const { footprintFill, footprintLine } = ENERGY.overlay;
 
-    const cells = [];
-    if (def.isSource) {
-      // The conduit raises strength out to (output - 1) tiles (Chebyshev).
-      const reach = Math.max(0, ENERGY.conduitOutput - 1);
-      for (let dr = -reach; dr <= reach; dr++) {
-        for (let dc = -reach; dc <= reach; dc++) {
-          if (dc === 0 && dr === 0) continue;
-          const c = cell.c + dc;
-          const r = cell.r + dr;
-          if (this.grid.inBounds(c, r)) cells.push({ c, r });
-        }
-      }
-    } else {
-      for (const o of ENERGY.drainOffsets) {
-        const c = cell.c + o.dc;
-        const r = cell.r + o.dr;
-        if (this.grid.inBounds(c, r)) cells.push({ c, r });
-      }
+    const cells = [{ c: cell.c, r: cell.r }];
+    for (const o of this.scene.energy.footprintFor(def)) {
+      const c = cell.c + o.dc, r = cell.r + o.dr;
+      if (this.grid.inBounds(c, r)) cells.push({ c, r });
     }
 
-    const color = def.isSource ? sourceColor : drainColor;
     for (const cc of cells) {
       const pos = this.grid.toScreen(cc.c, cc.r);
       g.fillStyle(color, footprintFill);
@@ -152,12 +134,12 @@ export class PlacementManager {
     g.setVisible(true);
   }
 
-  // Strong highlight on the hovered cell (buildable + affordable + powered).
+  // Strong highlight on the hovered cell (placeable + affordable).
   drawHighlight(cell) {
     const pos = this.grid.toScreen(cell.c, cell.r);
     const ok = this.grid.isBuildable(cell.c, cell.r) &&
       this.scene.canAfford(this.pieceDef.cost) &&
-      this.poweredOn(cell.c, cell.r);
+      this.canPlaceOn(cell.c, cell.r);
     const color = ok ? PALETTE.tileBuildOk : PALETTE.tileBuildBad;
 
     this.highlight.clear();
@@ -184,7 +166,6 @@ export class PlacementManager {
 
   // ----------------------------------------------------------- input ------
 
-  // Called from the scene's pointer move handler with camera world coords.
   onPointerMove(worldX, worldY) {
     if (!this.active) return;
     const cell = this.grid.cellAt(worldX, worldY);
@@ -199,16 +180,13 @@ export class PlacementManager {
     this.drawFootprint(cell);
   }
 
-  // Called from the scene's pointer-up handler with camera world coords. Returns
-  // true if it consumed the tap (a build was attempted) so the scene can skip
-  // other handling.
+  // Returns true if it consumed the tap (a build was attempted).
   onPointerUp(worldX, worldY) {
     if (!this.active) return false;
     const cell = this.grid.cellAt(worldX, worldY);
     if (!cell) return false;
     this.scene.tryBuildPiece(cell, this.pieceDef);
-    // Re-draw to reflect new occupancy / affordability / field (the scene also
-    // calls refreshOverlay via refreshEnergy, but the hovered cell updates here).
+    // The scene's refreshEnergy redraws the overlay; update the hovered cell.
     this.drawHighlight(cell);
     this.drawFootprint(cell);
     return true;

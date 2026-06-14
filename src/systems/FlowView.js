@@ -43,14 +43,14 @@ export class FlowView {
 
       const bx = t.x;
       const by = t.y - 6; // converge on the tower's foot
+      const fp = this.field.footprintFor(t.def);
       let idx = 0;
 
-      for (const o of ENERGY.drainOffsets) {
+      for (const o of fp) {
         idx++;
         const c = t.cell.c + o.dc;
         const r = t.cell.r + o.dr;
         if (!this.grid.inBounds(c, r)) continue;
-        if (this.field.generatedAt(c, r) <= 0) continue; // no energy here to pull
 
         const p = this.grid.toScreen(c, r);
 
@@ -58,18 +58,18 @@ export class FlowView {
         g.lineStyle(2, F.tendrilColor, F.tendrilAlpha);
         g.lineBetween(p.x, p.y, bx, by);
 
-        // Motes travelling tile -> tower, staggered per path so they don't march
-        // in lockstep. Each fades in/out at the ends (sin envelope). A warm halo
-        // plus a white core makes them glow distinctly over the heat-map field.
+        // Motes travelling tile -> tower, staggered per path. Each fades in/out
+        // at the ends (sin envelope); a warm halo + white core keeps them
+        // readable over the heat-map field while staying subtle.
         const stagger = (idx * 0.37) % 1;
         for (let d = 0; d < F.dots; d++) {
           const ph = ((time / cycle) + stagger + d / F.dots) % 1;
           const x = Phaser.Math.Linear(p.x, bx, ph);
           const y = Phaser.Math.Linear(p.y, by, ph);
           const env = Math.sin(ph * Math.PI); // 0 at ends, 1 mid-path
-          g.fillStyle(F.glowColor, 0.25 * env);
+          g.fillStyle(F.glowColor, F.glowAlpha * env);
           g.fillCircle(x, y, F.dotR * 2.3);
-          g.fillStyle(F.dotColor, 0.35 + 0.6 * env);
+          g.fillStyle(F.dotColor, F.coreAlpha * (0.4 + 0.6 * env));
           g.fillCircle(x, y, F.dotR);
         }
       }

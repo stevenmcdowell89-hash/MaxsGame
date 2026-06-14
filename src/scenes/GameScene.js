@@ -315,9 +315,9 @@ export class GameScene extends Phaser.Scene {
       this.audio.deny();
       return;
     }
-    // Energy gate: a tower needs enough available strength on its tile for its
-    // tier. Conduits (sources) carry no requirement and plant anywhere buildable.
-    if (!def.isSource && !this.energy.canPower(cell.c, cell.r, def.tier ?? 0)) {
+    // Energy gate: enough generated strength for the piece's tier AND its
+    // footprint must be clear of other pieces' reservations.
+    if (!this.energy.canPlace(cell.c, cell.r, def)) {
       this.audio.deny();
       return;
     }
@@ -329,8 +329,7 @@ export class GameScene extends Phaser.Scene {
     this.towers.push(piece);
 
     // Register the piece with the energy field, then recompute everything.
-    if (def.isSource) this.energy.addSource(cell.c, cell.r, ENERGY.conduitOutput);
-    else this.energy.addConsumer(cell.c, cell.r, ENERGY.drainByTier[def.tier] ?? 0);
+    this.energy.addPiece(cell.c, cell.r, def);
     this.refreshEnergy();
 
     this.audio.place();
@@ -348,9 +347,7 @@ export class GameScene extends Phaser.Scene {
 
   updatePoweredStates() {
     for (const t of this.towers) {
-      const powered = t.def.isSource ||
-        this.energy.availableAt(t.cell.c, t.cell.r) >= (t.def.tier ?? 0);
-      t.setPowered(powered);
+      t.setPowered(this.energy.poweredFor(t.cell.c, t.cell.r, t.def));
     }
   }
 
@@ -394,10 +391,10 @@ export class GameScene extends Phaser.Scene {
   // view). Auto-hides after a moment.
   showTileInfo(cell) {
     const gen = this.energy.generatedAt(cell.c, cell.r);
-    const avail = this.energy.availableAt(cell.c, cell.r);
-    const cap = Math.max(0, Math.floor(avail));
+    const reserved = this.energy.isReserved(cell.c, cell.r);
     this.tileInfo.setText(
-      `tile ${cell.c},${cell.r}   generated ${gen}   available ${avail}   (powers ≤ T${cap})`);
+      `tile ${cell.c},${cell.r}   energy ${gen}   (powers ≤ T${gen})` +
+      (reserved ? '   • RESERVED' : ''));
     this.tileInfo.setVisible(true);
     if (this._tileInfoTimer) this._tileInfoTimer.remove();
     this._tileInfoTimer = this.time.delayedCall(2600, () => this.tileInfo.setVisible(false));
@@ -425,33 +422,39 @@ export class GameScene extends Phaser.Scene {
     EventBus.emit(EVENTS.TOWER_DESELECTED);
   }
 
-  // Outline the tiles the selected piece exchanges energy with and draw a line
-  // from the piece to each: a tower DRAWS from its 8 neighbours (amber); a
-  // conduit FEEDS the tiles in its boost radius (cyan).
+  // Outline the cells the selected piece reserves and draw a line from the piece
+  // to each — its energy "footprint" by tier (amber for a tower, cyan for a
+  // conduit). A tier-1 reserves nothing extra, so only its own tile shows.
   drawPieceFootprint(tower) {
     const g = this.footprintView;
     g.clear();
     const isSource = !!tower.def.isSource;
-    const color = isSource ? ENERGY.overlay.sourceColor : ENERGY.overlay.drainColor;
+    const color = isSource ? ENERGY.overlay.sourceColor : ENERGY.overlay.drawColor;
     const { footprintFill, footprintLine } = ENERGY.overlay;
     const w = ISO.tileWidth;
     const h = ISO.tileHeight;
 
+    const diamond = (pos) => {
+      g.beginPath();
+      g.moveTo(pos.x, pos.y - h / 2);
+      g.lineTo(pos.x + w / 2, pos.y);
+      g.lineTo(pos.x, pos.y + h / 2);
+      g.lineTo(pos.x - w / 2, pos.y);
+      g.closePath();
+    };
+
+    // The piece's own tile (always reserved).
+    const own = this.grid.toScreen(tower.cell.c, tower.cell.r);
+    g.fillStyle(color, footprintFill + 0.08);
+    g.lineStyle(2, color, footprintLine);
+    diamond(own);
+    g.fillPath();
+    g.strokePath();
+
     const cells = [];
-    if (isSource) {
-      const reach = Math.max(0, ENERGY.conduitOutput - 1);
-      for (let dr = -reach; dr <= reach; dr++) {
-        for (let dc = -reach; dc <= reach; dc++) {
-          if (dc === 0 && dr === 0) continue;
-          const c = tower.cell.c + dc, r = tower.cell.r + dr;
-          if (this.grid.inBounds(c, r)) cells.push({ c, r });
-        }
-      }
-    } else {
-      for (const o of ENERGY.drainOffsets) {
-        const c = tower.cell.c + o.dc, r = tower.cell.r + o.dr;
-        if (this.grid.inBounds(c, r)) cells.push({ c, r });
-      }
+    for (const o of this.energy.footprintFor(tower.def)) {
+      const c = tower.cell.c + o.dc, r = tower.cell.r + o.dr;
+      if (this.grid.inBounds(c, r)) cells.push({ c, r });
     }
 
     for (const cc of cells) {
@@ -460,12 +463,7 @@ export class GameScene extends Phaser.Scene {
       g.lineBetween(tower.x, tower.y - 6, pos.x, pos.y);
       g.fillStyle(color, footprintFill);
       g.lineStyle(2, color, footprintLine);
-      g.beginPath();
-      g.moveTo(pos.x, pos.y - h / 2);
-      g.lineTo(pos.x + w / 2, pos.y);
-      g.lineTo(pos.x, pos.y + h / 2);
-      g.lineTo(pos.x - w / 2, pos.y);
-      g.closePath();
+      diamond(pos);
       g.fillPath();
       g.strokePath();
     }
@@ -502,10 +500,9 @@ export class GameScene extends Phaser.Scene {
     this.deselectTower();
     this.spawnPlaceDust({ x: tower.x, y: tower.y });
 
-    // Deregister from the energy field and recompute (neighbours may recover or
-    // a removed conduit may shrink the powered zone).
-    if (tower.def.isSource) this.energy.removeSourceAt(tower.cell.c, tower.cell.r);
-    else this.energy.removeConsumerAt(tower.cell.c, tower.cell.r);
+    // Deregister from the energy field and recompute (frees its reserved cells;
+    // a removed conduit may shrink the powered zone and brown out towers).
+    this.energy.removePieceAt(tower.cell.c, tower.cell.r);
     tower.destroy();
     this.refreshEnergy();
 

@@ -122,16 +122,22 @@ decide *how*.
   `systems/IsoGrid.js`. Depth sorting: tiles sit in a low band; everything else
   is depth-sorted by its screen-Y each frame (`DEPTH` in `data/game.js`).
 - **Energy layers on top of money, not replacing it.** Money still buys; energy
-  gates WHERE/HOW MANY pieces can run. `systems/EnergyField.js` is pure spatial
-  state (like `IsoGrid`): sources (the core, output 5 — a generous turtle zone;
-  placed conduits, output 4 — shorter reach, so expanding is an investment)
-  radiate strength
-  that falls off by Chebyshev distance — `generated = MAX over sources of
-  (output − distance)` — and each placed tower drains its 8 neighbours, giving
-  `available = generated − drains`. A tower needs `available ≥ its tier` to be
-  placed and to keep firing; drop below and it browns out (`Tower.setPowered`).
-  `GameScene` owns the field, calls `refreshEnergy()` on every build/sell (the
-  only times it changes), and pushes the result to the glow (`EnergyView`),
+  gates WHERE/HOW MANY pieces run. `systems/EnergyField.js` is pure spatial state
+  (like `IsoGrid`) with two layers:
+  - **WHERE — `generated`:** sources (core output 5, a generous turtle zone;
+    conduits output 4, shorter reach so expanding is an investment) radiate
+    strength falling off by Chebyshev distance — `generated = MAX over sources of
+    (output − distance)`. A piece needs `generated ≥ its place-tier` to build/run
+    (tier-1→1, tier-2→2, tier-3→3, conduit→1); a tower browns out if a source it
+    relied on is removed (`Tower.setPowered`).
+  - **HOW MANY — `reserved`:** each placed piece reserves a footprint by tier —
+    tier-1 its own tile only (packs freely), tier-2 the 4 orthogonal cells,
+    tier-3 and the conduit all 8 — and a piece can't be built if its tile or any
+    footprint cell is already reserved/occupied. Bigger pieces need more spacing.
+  A conduit is both a source and an 8-cell footprint, and must sit on existing
+  tier-1 energy, so you expand the field outward, never from the void. `GameScene`
+  owns the field, calls `refreshEnergy()` on every build/sell, and pushes the
+  result to the heat-map glow (`EnergyView`), the consumption flow (`FlowView`),
   tower power state, and the placement overlay. All tuning is in `data/energy.js`.
 - **Camera = the world; HUD is fixed.** The board can be larger than the screen,
   so `GameScene` pans/zooms its main camera via `CameraController` (drag or
@@ -174,8 +180,8 @@ All in `src/data/`. Quick reference (full field docs are in each file):
 - **`waves.js`** — `WAVES[levelId]`: array of waves; each has a `reward` and
   `groups` of `{ type, count, interval, delay? }`.
 - **`energy.js`** — `ENERGY`: `coreOutput`/`conduitOutput` (source strengths),
-  `drainByTier` + `drainOffsets` (per-tower consumption), and the glow/overlay
-  colours. The one place to balance the power layer.
+  `conduitPlaceTier`, `footprint` (the cells each tier reserves), and the
+  field/flow/overlay visuals. The one place to balance the power layer.
 
 Common edits:
 - **Tweak difficulty:** numbers in `towers.js` / `enemies.js` / `waves.js`.
