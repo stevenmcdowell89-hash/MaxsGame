@@ -56,30 +56,46 @@ export const ENERGY = {
 
   // ---- Visuals --------------------------------------------------------------
   // Three deliberately DISTINCT visual channels so nothing reads ambiguously:
-  //   1. FIELD  (cyan, additive glow) = the energy the GRID provides. This is
-  //      the `generated` field — it only changes when sources change, so it
-  //      reads purely as "where the grid is energised", never muddied by towers.
-  //   2. DRAW   (amber) = a tower pulling FROM the grid: an always-on intake
-  //      node at each powered tower, plus its full footprint shown on select.
-  //   3. WARN   (red)  = a browned-out tower that can't get enough (see Tower).
+  //   1. FIELD (heat-map) = the energy the GRID provides. This is the
+  //      `generated` field, colour-coded by strength with a clear cool->hot
+  //      ramp (blue=1 ... orange=5) so each tier is identifiable on its own,
+  //      not just by comparison. It only changes when sources change.
+  //   2. FLOW (amber, animated) = a tower pulling FROM the grid: dots stream
+  //      from each energised neighbour tile INTO the tower every frame, so
+  //      consumption is unmistakably moving energy, not part of the static grid.
+  //   3. WARN (red) = a browned-out tower that can't get enough (see Tower).
   field: {
-    // Cyan ramp, indexed by floored generated strength (0 draws nothing).
-    bandColors: [0x000000, 0x1c5f80, 0x2f86b0, 0x49b6e0, 0x79d8ff, 0xc4f2ff],
-    bandAlphas: [0,        0.10,     0.14,     0.19,     0.25,     0.32],
-    // Soft emitter glow drawn at each source centre so sources visibly radiate.
+    // Heat ramp indexed by floored generated strength (0 draws nothing).
+    // Distinct HUES (not just brightness) so a tier reads at a glance.
+    bandColors: [0x000000, 0x2b5fd9, 0x18b6c4, 0x3fce5a, 0xf4d13a, 0xff7a2a],
+    bandAlphas: [0,        0.34,     0.38,     0.42,     0.46,     0.52],
+    // Soft emitter halo at each source centre so sources visibly radiate.
     sourceColor: 0x9bf0ff,
-    sourceGlowR: 86,   // px radius of the source halo
-    sourceGlowA: 0.22,
-    // Gentle breathing pulse on the whole field (alpha lo..hi), so it reads as
-    // live energy rather than flat paint.
-    pulseLo: 0.82,
+    sourceGlowR: 78,   // px radius of the source halo
+    sourceGlowA: 0.14,
+    // Gentle breathing pulse on the whole field (alpha lo..hi).
+    pulseLo: 0.80,
     pulseHi: 1.0,
     pulseMs: 1600,
   },
 
+  // Animated consumption flow: motes travelling from each drained tile into the
+  // tower. This is the "tower is drawing from the grid" readout. Rendered
+  // ADDITIVE white so the motes pop over ANY heat-map colour (they must not be
+  // mistaken for the field itself), with a warm-white guide tendril.
+  flow: {
+    dotColor: 0xffffff,     // bright white energy mote (additive)
+    glowColor: 0xffe6a0,    // warm halo around each mote
+    tendrilColor: 0xffd27a, // guide line along each draw path
+    tendrilAlpha: 0.30,
+    dotR: 4.5,              // mote core radius (px)
+    dots: 2,                // motes in flight per draw path
+    speedMs: 820,           // ms for a mote to travel a path
+  },
+
   // Per-piece indicator node at the foot of each placed piece.
   indicator: {
-    drawColor: 0xffb24a,   // a tower drawing from the grid (amber)
+    drawColor: 0xffd24a,   // a tower drawing from the grid (amber sink)
     sourceColor: 0x8be9ff, // a conduit feeding the grid (cyan)
   },
 

@@ -8,9 +8,10 @@
 // channel (the per-piece intake node + the on-select footprint); brownouts show
 // red on the tower. So the three things stay visually separate and legible.
 //
-// Look: additive cyan, banded by strength (discrete tier boundaries), a soft
-// halo at each source centre, and a gentle breathing pulse so it reads as live
-// energy. A single Graphics above the tiles, below entities; the scene calls
+// Look: a cool->hot heat map (distinct hue per strength tier so each reads on
+// its own), a soft halo at each source centre, and a gentle breathing pulse so
+// it reads as live energy. A single Graphics above the tiles, below entities;
+// the scene calls
 // redraw() whenever the sources change (a conduit placed/sold) and toggles it
 // off in build mode (where the green/red placement overlay takes over).
 // ---------------------------------------------------------------------------
@@ -26,7 +27,6 @@ export class EnergyView {
 
     this.g = scene.add.graphics();
     this.g.setDepth(DEPTH.tiles + 500); // above tiles, below entities/overlays
-    this.g.setBlendMode(Phaser.BlendModes.ADD);
 
     // Breathing pulse: tween the layer's alpha so the field feels alive.
     this.scene.tweens.add({

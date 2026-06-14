@@ -22,6 +22,7 @@ import { WaveManager } from '../systems/WaveManager.js';
 import { CameraController } from '../systems/CameraController.js';
 import { EnergyField } from '../systems/EnergyField.js';
 import { EnergyView } from '../systems/EnergyView.js';
+import { FlowView } from '../systems/FlowView.js';
 
 import { Enemy } from '../entities/Enemy.js';
 import { Tower } from '../entities/Tower.js';
@@ -67,6 +68,8 @@ export class GameScene extends Phaser.Scene {
     // ---- Energy field (core is the primary source) + its glow layer ----
     this.energy = new EnergyField(this.grid);
     this.energyView = new EnergyView(this, this.grid, this.energy);
+    // Animated consumption: motes flowing from drained tiles into each tower.
+    this.flowView = new FlowView(this, this.grid, this.energy);
 
     // Small debug readout: tap a tile to print its raw strength (numbers stay
     // out of the main view — the field reads via the glow + placement overlay).
@@ -217,6 +220,7 @@ export class GameScene extends Phaser.Scene {
       // The field glow and the green/red placement overlay would fight for the
       // same tiles, so hand the board to the overlay while building.
       this.energyView.setVisible(!active);
+      this.flowView.setVisible(!active);
       this.placement.setMode(active, def);
       // In build mode a one-finger drag aims the highlight, so disable one-finger
       // panning (two-finger pinch/pan still works); restore it otherwise.
@@ -664,6 +668,10 @@ export class GameScene extends Phaser.Scene {
       const status = p.update(delta);
       if (status === 'done') this.projectiles.splice(i, 1);
     }
+
+    // Animate energy being drawn from the grid into the towers (skipped in
+    // build mode, where the placement overlay owns the board).
+    if (!this.placement.active) this.flowView.update(time, this.towers);
 
     // Win check: wave finished spawning and the board is clear.
     if (this.waveActive && !this.waves.spawning && this.enemies.length === 0) {
