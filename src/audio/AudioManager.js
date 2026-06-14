@@ -94,6 +94,23 @@ export class AudioManager {
     this.tone({ freq: 200, endFreq: 140, type: 'square', dur: 0.14, gain: 0.25 });
   }
 
+  // Alarm-ish double thud when an enemy slips through and reaches the base.
+  baseHit() {
+    this.tone({ freq: 220, endFreq: 70, type: 'sawtooth', dur: 0.22, gain: 0.3 });
+    this.tone({ freq: 300, endFreq: 90, type: 'square', dur: 0.16, gain: 0.18, delay: 0.06 });
+  }
+
+  // Soft blip when a placed tower is tapped/selected.
+  select() {
+    this.tone({ freq: 560, endFreq: 760, type: 'sine', dur: 0.07, gain: 0.18 });
+  }
+
+  // Descending chime when a tower is sold (gold back).
+  sell() {
+    this.tone({ freq: 880, endFreq: 520, type: 'triangle', dur: 0.12, gain: 0.25 });
+    this.tone({ freq: 520, endFreq: 360, type: 'triangle', dur: 0.12, gain: 0.18, delay: 0.07 });
+  }
+
   waveStart() {
     this.tone({ freq: 300, endFreq: 500, type: 'sawtooth', dur: 0.2, gain: 0.25 });
   }

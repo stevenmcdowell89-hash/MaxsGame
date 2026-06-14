@@ -45,6 +45,9 @@ export class GameScene extends Phaser.Scene {
     this.towers = [];
     this.projectiles = [];
 
+    // Currently inspected tower (tap a built tower to see its range + sell it).
+    this.selectedTower = null;
+
     // ---- Audio (persist one AudioManager across scene restarts) ----
     this.audio = this.registry.get('audio');
     if (!this.audio) {
@@ -56,6 +59,11 @@ export class GameScene extends Phaser.Scene {
     const playArea = { x: 0, y: 64, width: GAME.width, height: GAME.height - 64 - 110 };
     this.grid = new IsoGrid(this.level, playArea);
     this.drawBoard();
+
+    // Range ring shown when a built tower is selected (below entities).
+    this.rangeRing = this.add.graphics();
+    this.rangeRing.setDepth(DEPTH.entityBase - 1);
+    this.rangeRing.setVisible(false);
 
     // ---- Systems ----
     this.placement = new PlacementManager(this, this.grid);
@@ -106,13 +114,20 @@ export class GameScene extends Phaser.Scene {
     this.input.once('pointerdown', () => this.audio.unlock());
 
     this.input.on('pointermove', (pointer) => this.placement.onPointerMove(pointer));
-    this.input.on('pointerup', (pointer) => this.placement.onPointerUp(pointer));
+    this.input.on('pointerup', (pointer) => {
+      // In build mode the placement manager consumes the tap. Otherwise, treat
+      // it as a tower inspect/deselect tap.
+      const consumed = this.placement.onPointerUp(pointer);
+      if (!consumed) this.handleSelectTap(pointer);
+    });
   }
 
   bindEvents() {
     // Bound handlers so we can detach them on shutdown (avoids dupes on restart).
     this._onBuildMode = ({ active, towerId }) => {
       const def = TOWERS[towerId || DEFAULT_TOWER_ID];
+      // Inspecting and building are mutually exclusive interactions.
+      if (active) this.deselectTower();
       this.placement.setMode(active, def);
       EventBus.emit(EVENTS.BUILD_MODE_CHANGED, active);
     };
@@ -120,6 +135,7 @@ export class GameScene extends Phaser.Scene {
     // we emit in create(). When the HUD signals it's ready, (re)publish state.
     this._onHudReady = () => this.publishInit();
     this._onStartWave = () => this.startWave();
+    this._onSellTower = () => this.sellSelectedTower();
     this._onRestart = () => this.scene.restart();
     this._onToggleMute = () => {
       const muted = this.audio.setMuted(!this.audio.muted);
@@ -130,6 +146,7 @@ export class GameScene extends Phaser.Scene {
     EventBus.on(EVENTS.HUD_READY, this._onHudReady);
     EventBus.on(EVENTS.REQUEST_BUILD_MODE, this._onBuildMode);
     EventBus.on(EVENTS.REQUEST_START_WAVE, this._onStartWave);
+    EventBus.on(EVENTS.REQUEST_SELL_TOWER, this._onSellTower);
     EventBus.on(EVENTS.REQUEST_RESTART, this._onRestart);
     EventBus.on(EVENTS.REQUEST_TOGGLE_MUTE, this._onToggleMute);
 
@@ -137,6 +154,7 @@ export class GameScene extends Phaser.Scene {
       EventBus.off(EVENTS.HUD_READY, this._onHudReady);
       EventBus.off(EVENTS.REQUEST_BUILD_MODE, this._onBuildMode);
       EventBus.off(EVENTS.REQUEST_START_WAVE, this._onStartWave);
+      EventBus.off(EVENTS.REQUEST_SELL_TOWER, this._onSellTower);
       EventBus.off(EVENTS.REQUEST_RESTART, this._onRestart);
       EventBus.off(EVENTS.REQUEST_TOGGLE_MUTE, this._onToggleMute);
     });
@@ -174,6 +192,7 @@ export class GameScene extends Phaser.Scene {
   loseLife(amount) {
     this.lives = Math.max(0, this.lives - amount);
     EventBus.emit(EVENTS.LIVES_CHANGED, this.lives);
+    this.audio.baseHit();
     this.cameras.main.shake(150, 0.006);
     if (this.lives <= 0) this.endGame(false);
   }
@@ -216,6 +235,71 @@ export class GameScene extends Phaser.Scene {
     dust.setDepth(DEPTH.entityBase + pos.y + DEPTH.effectBias);
     dust.explode();
     this.time.delayedCall(340, () => dust.destroy());
+  }
+
+  // ----------------------------------------------------- tower inspect ----
+
+  // A tap that wasn't consumed by build mode: select a built tower (showing its
+  // range + a sell option) or deselect when tapping elsewhere on the board.
+  handleSelectTap(pointer) {
+    if (this.gameOver) return;
+    const cell = this.grid.cellAt(pointer.worldX, pointer.worldY);
+    // Off-board taps (e.g. on the HUD bars) shouldn't change the selection.
+    if (!cell) return;
+    const tower = this.towerAt(cell);
+    if (tower) {
+      if (this.selectedTower === tower) this.deselectTower();
+      else this.selectTower(tower);
+    } else {
+      this.deselectTower();
+    }
+  }
+
+  towerAt(cell) {
+    return this.towers.find((t) => t.cell.c === cell.c && t.cell.r === cell.r) || null;
+  }
+
+  selectTower(tower) {
+    this.selectedTower = tower;
+    this.drawRangeRing(tower);
+    this.audio.select();
+    EventBus.emit(EVENTS.TOWER_SELECTED, { refund: this.refundFor(tower) });
+  }
+
+  deselectTower() {
+    if (!this.selectedTower) return;
+    this.selectedTower = null;
+    this.rangeRing.clear();
+    this.rangeRing.setVisible(false);
+    EventBus.emit(EVENTS.TOWER_DESELECTED);
+  }
+
+  drawRangeRing(tower) {
+    const color = PALETTE.tileBuildOk;
+    this.rangeRing.clear();
+    this.rangeRing.lineStyle(2, color, 0.6);
+    this.rangeRing.fillStyle(color, 0.08);
+    this.rangeRing.fillCircle(tower.x, tower.y, tower.rangePx);
+    this.rangeRing.strokeCircle(tower.x, tower.y, tower.rangePx);
+    this.rangeRing.setVisible(true);
+  }
+
+  refundFor(tower) {
+    return Math.floor(tower.def.cost * GAME.sellRefund);
+  }
+
+  sellSelectedTower() {
+    const tower = this.selectedTower;
+    if (!tower || this.gameOver) return;
+    const refund = this.refundFor(tower);
+    this.grid.release(tower.cell.c, tower.cell.r);
+    const idx = this.towers.indexOf(tower);
+    if (idx >= 0) this.towers.splice(idx, 1);
+    this.deselectTower();
+    this.spawnPlaceDust({ x: tower.x, y: tower.y });
+    tower.destroy();
+    this.addGold(refund);
+    this.audio.sell();
   }
 
   // ------------------------------------------------------------- enemies ----
@@ -309,6 +393,7 @@ export class GameScene extends Phaser.Scene {
     this.gameOver = true;
     this.waveActive = false;
     this.placement.setMode(false);
+    this.deselectTower();
 
     SaveManager.recordResult({ win, wavesCleared: this.clearedWaves });
     if (win) this.audio.win(); else this.audio.lose();
@@ -335,6 +420,10 @@ export class GameScene extends Phaser.Scene {
       const status = e.update(delta);
       if (status === 'reachedBase') {
         const dmg = e.damage;
+        // Mark dead BEFORE destroying so any in-flight projectile still homing
+        // on this enemy stops touching it (it keeps `alive` true otherwise, and
+        // poking a destroyed object's scene would throw and freeze the game).
+        e.alive = false;
         e.destroy();
         this.enemies.splice(i, 1);
         this.flashBase();

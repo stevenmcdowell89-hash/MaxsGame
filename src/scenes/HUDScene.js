@@ -61,6 +61,12 @@ export class HUDScene extends Phaser.Scene {
       });
     });
 
+    // Sell button (centre-left): only visible while a built tower is selected.
+    this.sellBtn = this.makeButton(435, h - 48, 250, 68, 'SELL', () => {
+      EventBus.emit(EVENTS.REQUEST_SELL_TOWER);
+    });
+    this.sellBtn.container.setVisible(false);
+
     // Start Wave button (right-centre).
     this.startBtn = this.makeButton(w / 2 + 120, h - 48, 280, 68, 'START WAVE', () => {
       EventBus.emit(EVENTS.REQUEST_START_WAVE);
@@ -153,6 +159,7 @@ export class HUDScene extends Phaser.Scene {
       this.overlay.setVisible(false);
       this.buildActive = false;
       this.buildBtn.setActive(false);
+      this.hideSell();
       this.refreshBuildLabel();
     });
 
@@ -167,9 +174,21 @@ export class HUDScene extends Phaser.Scene {
     on(EVENTS.BUILD_MODE_CHANGED, (active) => {
       this.buildActive = active;
       this.buildBtn.setActive(active);
+      if (active) this.hideSell();
     });
+    on(EVENTS.TOWER_SELECTED, ({ refund }) => this.showSell(refund));
+    on(EVENTS.TOWER_DESELECTED, () => this.hideSell());
     on(EVENTS.MUTE_CHANGED, (muted) => this.setMuted(muted));
-    on(EVENTS.GAME_OVER, ({ win, wave, best }) => this.showOverlay(win, wave, best));
+    on(EVENTS.GAME_OVER, ({ win, wave, best }) => { this.hideSell(); this.showOverlay(win, wave, best); });
+  }
+
+  showSell(refund) {
+    this.sellBtn.setLabel(`SELL  (+${refund})`);
+    this.sellBtn.container.setVisible(true);
+  }
+
+  hideSell() {
+    this.sellBtn.container.setVisible(false);
   }
 
   setLives(v) { this.livesText.setText(`LIVES ${v}`); }
