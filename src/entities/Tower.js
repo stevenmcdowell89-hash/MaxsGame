@@ -16,6 +16,7 @@
 // ---------------------------------------------------------------------------
 
 import { DEPTH } from '../data/game.js';
+import { ENERGY } from '../data/energy.js';
 import { selectTarget } from '../systems/TargetingSystem.js';
 
 export class Tower extends Phaser.GameObjects.Container {
@@ -47,6 +48,11 @@ export class Tower extends Phaser.GameObjects.Container {
     this.add(this.sprite);
 
     this.setDepth(DEPTH.entityBase + this.y);
+
+    // "Plugged into the grid" indicator at the foot: amber for a tower DRAWING
+    // power, cyan for a conduit FEEDING the grid. Pulses so it reads as a live
+    // energy tap. Hidden while a tower is browned out (it isn't getting power).
+    this.createPowerNode();
 
     // Build-in animation: pop up from the ground.
     this.sprite.alpha = 0;
@@ -90,9 +96,28 @@ export class Tower extends Phaser.GameObjects.Container {
     else this.updateInstant(delta, enemies, fire, audio);
   }
 
+  // --- "drawing from the grid" indicator -------------------------------
+  createPowerNode() {
+    const ind = ENERGY.indicator;
+    const isSource = !!this.def.isSource;
+    this.powerNode = this.scene.add.sprite(0, -6, 'spark');
+    this.powerNode.setBlendMode(Phaser.BlendModes.ADD);
+    this.powerNode.setTint(isSource ? ind.sourceColor : ind.drawColor);
+    const base = isSource ? 1.5 : 1.05;
+    this.powerNode.setScale(base);
+    this.add(this.powerNode);
+    this.powerPulse = this.scene.tweens.add({
+      targets: this.powerNode,
+      scaleX: { from: base, to: base * 1.5 },
+      scaleY: { from: base, to: base * 1.5 },
+      alpha: { from: 0.85, to: 0.3 },
+      duration: 720, yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
+    });
+  }
+
   // Energy gate: when a tower's tile drops below its tier requirement it browns
-  // out — tint red, dim, halt firing and raise a warning marker. Conduits are
-  // sources, so they never brown out (their visual stays put).
+  // out — tint red, dim, halt firing, drop its grid tap and raise a warning
+  // marker. Conduits are sources, so they never brown out.
   setPowered(on) {
     if (on === this.powered) return;
     this.powered = on;
@@ -100,12 +125,14 @@ export class Tower extends Phaser.GameObjects.Container {
     if (on) {
       this.sprite.clearTint();
       this.sprite.setAlpha(1);
+      if (this.powerNode) this.powerNode.setVisible(true);
       this.hideWarn();
     } else {
       this.charge = 0;
       this.hideGlow();
       this.sprite.setTint(0xff5a5a);
       this.sprite.setAlpha(0.65);
+      if (this.powerNode) this.powerNode.setVisible(false);
       this.showWarn();
     }
   }
@@ -219,6 +246,7 @@ export class Tower extends Phaser.GameObjects.Container {
   destroy(fromScene) {
     if (this.glow) { this.glow.destroy(); this.glow = null; }
     if (this.warnTween) { this.warnTween.stop(); this.warnTween = null; }
+    if (this.powerPulse) { this.powerPulse.stop(); this.powerPulse = null; }
     super.destroy(fromScene);
   }
 }

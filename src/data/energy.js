@@ -23,15 +23,18 @@
 
 export const ENERGY = {
   // Source outputs (strength emitted at distance 0). The field steps down one
-  // per tile of Chebyshev distance: e.g. core 4 -> 4,3,2,1,0 outward.
-  coreOutput: 4,
-  // The conduit is the player's "expand your power" tool, so it reaches FURTHER
-  // than the core: at output 5 a single conduit powers tier-1 out to 4 tiles,
-  // tier-2 out to 3, and tier-3 out to 2 (its own tile is occupied, so the best
-  // buildable tile beside it is output-1 = 4). Chaining conduits covers the map
-  // and unlocks high-tier zones away from the core. Drain still caps how MANY
-  // high-tier towers fit, independent of this number.
-  conduitOutput: 5,
+  // per tile of Chebyshev distance: e.g. core 5 -> 5,4,3,2,1,0 outward.
+  //
+  // Balanced for a real TURTLE-vs-EXPAND choice:
+  //   - coreOutput 5 gives a generous home zone: tier-3 within 2 tiles, tier-2
+  //     within 3, tier-1 within 4. You can mount a strong defence without ever
+  //     placing a conduit (turtle).
+  //   - conduitOutput 4 is deliberately SHORTER than the core: a conduit only
+  //     reaches tier-3 on its 8 adjacent tiles, tier-2 within 2, tier-1 within
+  //     3. So spreading out costs gold AND covers less per step than staying
+  //     home — expansion is an investment, not a free upgrade.
+  coreOutput: 5,
+  conduitOutput: 4,
 
   // How much strength each placed tower removes from every tile in its drain
   // footprint, keyed by the tower's tier. Higher tier = hungrier.
@@ -48,15 +51,36 @@ export const ENERGY = {
     { dc: -1, dr: 1 },  { dc: 0, dr: 1 },  { dc: 1, dr: 1 },
   ],
 
-  // Highest strength level the visuals band for (levels above clamp to this).
-  maxLevel: 4,
+  // Highest strength level the visuals band for (= max possible generated).
+  maxLevel: 5,
 
-  // Field glow layer (drawn translucent OVER the terrain). Indexed by the
-  // floored available strength of a tile (0 = drawn nothing). Discrete bands
-  // make the 3->2->1 tier boundaries legible without showing raw numbers.
-  glow: {
-    bandColors: [0x000000, 0x2f6d8c, 0x3f9fc8, 0x57c8f5, 0x9bf0ff],
-    bandAlphas: [0,        0.12,     0.18,     0.26,     0.36],
+  // ---- Visuals --------------------------------------------------------------
+  // Three deliberately DISTINCT visual channels so nothing reads ambiguously:
+  //   1. FIELD  (cyan, additive glow) = the energy the GRID provides. This is
+  //      the `generated` field — it only changes when sources change, so it
+  //      reads purely as "where the grid is energised", never muddied by towers.
+  //   2. DRAW   (amber) = a tower pulling FROM the grid: an always-on intake
+  //      node at each powered tower, plus its full footprint shown on select.
+  //   3. WARN   (red)  = a browned-out tower that can't get enough (see Tower).
+  field: {
+    // Cyan ramp, indexed by floored generated strength (0 draws nothing).
+    bandColors: [0x000000, 0x1c5f80, 0x2f86b0, 0x49b6e0, 0x79d8ff, 0xc4f2ff],
+    bandAlphas: [0,        0.10,     0.14,     0.19,     0.25,     0.32],
+    // Soft emitter glow drawn at each source centre so sources visibly radiate.
+    sourceColor: 0x9bf0ff,
+    sourceGlowR: 86,   // px radius of the source halo
+    sourceGlowA: 0.22,
+    // Gentle breathing pulse on the whole field (alpha lo..hi), so it reads as
+    // live energy rather than flat paint.
+    pulseLo: 0.82,
+    pulseHi: 1.0,
+    pulseMs: 1600,
+  },
+
+  // Per-piece indicator node at the foot of each placed piece.
+  indicator: {
+    drawColor: 0xffb24a,   // a tower drawing from the grid (amber)
+    sourceColor: 0x8be9ff, // a conduit feeding the grid (cyan)
   },
 
   // Placement-mode overlay (green = the selected piece would be powered here,
@@ -67,6 +91,6 @@ export const ENERGY = {
     drainColor: 0xffb24a,  // tower drain footprint
     sourceColor: 0x8be9ff, // conduit boost footprint
     footprintFill: 0.16,
-    footprintLine: 0.6,
+    footprintLine: 0.7,
   },
 };

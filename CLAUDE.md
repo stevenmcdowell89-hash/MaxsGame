@@ -123,8 +123,9 @@ decide *how*.
   is depth-sorted by its screen-Y each frame (`DEPTH` in `data/game.js`).
 - **Energy layers on top of money, not replacing it.** Money still buys; energy
   gates WHERE/HOW MANY pieces can run. `systems/EnergyField.js` is pure spatial
-  state (like `IsoGrid`): sources (the core, output 4; placed conduits, output 5
-  — the expand-your-power tool reaches further than the core) radiate strength
+  state (like `IsoGrid`): sources (the core, output 5 — a generous turtle zone;
+  placed conduits, output 4 — shorter reach, so expanding is an investment)
+  radiate strength
   that falls off by Chebyshev distance — `generated = MAX over sources of
   (output − distance)` — and each placed tower drains its 8 neighbours, giving
   `available = generated − drains`. A tower needs `available ≥ its tier` to be

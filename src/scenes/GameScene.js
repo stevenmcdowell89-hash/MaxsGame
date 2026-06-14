@@ -80,6 +80,13 @@ export class GameScene extends Phaser.Scene {
     this.rangeRing.setDepth(DEPTH.entityBase - 1);
     this.rangeRing.setVisible(false);
 
+    // Footprint shown when a piece is selected: the tiles it draws from (amber,
+    // towers) or feeds (cyan, conduit), with connector lines back to the piece —
+    // a clear "this piece is swapping energy with these tiles" readout.
+    this.footprintView = this.add.graphics();
+    this.footprintView.setDepth(DEPTH.entityBase - 1);
+    this.footprintView.setVisible(false);
+
     // ---- Systems ----
     this.placement = new PlacementManager(this, this.grid);
     this.waves = new WaveManager(WAVES[this.level.id], (typeId) => this.spawnEnemy(typeId));
@@ -207,6 +214,9 @@ export class GameScene extends Phaser.Scene {
       const def = TOWERS[towerId || DEFAULT_TOWER_ID];
       // Inspecting and building are mutually exclusive interactions.
       if (active) this.deselectTower();
+      // The field glow and the green/red placement overlay would fight for the
+      // same tiles, so hand the board to the overlay while building.
+      this.energyView.setVisible(!active);
       this.placement.setMode(active, def);
       // In build mode a one-finger drag aims the highlight, so disable one-finger
       // panning (two-finger pinch/pan still works); restore it otherwise.
@@ -396,6 +406,7 @@ export class GameScene extends Phaser.Scene {
   selectTower(tower) {
     this.selectedTower = tower;
     this.drawRangeRing(tower);
+    this.drawPieceFootprint(tower);
     this.audio.select();
     EventBus.emit(EVENTS.TOWER_SELECTED, { refund: this.refundFor(tower) });
   }
@@ -405,7 +416,56 @@ export class GameScene extends Phaser.Scene {
     this.selectedTower = null;
     this.rangeRing.clear();
     this.rangeRing.setVisible(false);
+    this.footprintView.clear();
+    this.footprintView.setVisible(false);
     EventBus.emit(EVENTS.TOWER_DESELECTED);
+  }
+
+  // Outline the tiles the selected piece exchanges energy with and draw a line
+  // from the piece to each: a tower DRAWS from its 8 neighbours (amber); a
+  // conduit FEEDS the tiles in its boost radius (cyan).
+  drawPieceFootprint(tower) {
+    const g = this.footprintView;
+    g.clear();
+    const isSource = !!tower.def.isSource;
+    const color = isSource ? ENERGY.overlay.sourceColor : ENERGY.overlay.drainColor;
+    const { footprintFill, footprintLine } = ENERGY.overlay;
+    const w = ISO.tileWidth;
+    const h = ISO.tileHeight;
+
+    const cells = [];
+    if (isSource) {
+      const reach = Math.max(0, ENERGY.conduitOutput - 1);
+      for (let dr = -reach; dr <= reach; dr++) {
+        for (let dc = -reach; dc <= reach; dc++) {
+          if (dc === 0 && dr === 0) continue;
+          const c = tower.cell.c + dc, r = tower.cell.r + dr;
+          if (this.grid.inBounds(c, r)) cells.push({ c, r });
+        }
+      }
+    } else {
+      for (const o of ENERGY.drainOffsets) {
+        const c = tower.cell.c + o.dc, r = tower.cell.r + o.dr;
+        if (this.grid.inBounds(c, r)) cells.push({ c, r });
+      }
+    }
+
+    for (const cc of cells) {
+      const pos = this.grid.toScreen(cc.c, cc.r);
+      g.lineStyle(2, color, footprintLine * 0.5);
+      g.lineBetween(tower.x, tower.y - 6, pos.x, pos.y);
+      g.fillStyle(color, footprintFill);
+      g.lineStyle(2, color, footprintLine);
+      g.beginPath();
+      g.moveTo(pos.x, pos.y - h / 2);
+      g.lineTo(pos.x + w / 2, pos.y);
+      g.lineTo(pos.x, pos.y + h / 2);
+      g.lineTo(pos.x - w / 2, pos.y);
+      g.closePath();
+      g.fillPath();
+      g.strokePath();
+    }
+    g.setVisible(true);
   }
 
   drawRangeRing(tower) {

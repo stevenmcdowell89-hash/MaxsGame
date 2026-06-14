@@ -1,13 +1,18 @@
 // ---------------------------------------------------------------------------
-// EnergyView: the persistent field-glow layer.
+// EnergyView: the field-glow layer — "where the GRID is energised".
 //
-// Draws the EnergyField's `available` strength as a translucent, banded glow
-// over the terrain (brighter = stronger). Brightness is stepped per strength
-// level (data/energy.js `glow`), so the tier boundaries read at a glance and
-// over-packed clusters visibly darken as their available strength drops.
+// It draws the EnergyField's `generated` strength (the raw energy radiated by
+// the sources), NOT the post-drain `available`. Keeping towers' consumption out
+// of this layer is deliberate: the field reads purely as energy and never
+// dims/flickers as you place towers. A tower's draw is shown on its own amber
+// channel (the per-piece intake node + the on-select footprint); brownouts show
+// red on the tower. So the three things stay visually separate and legible.
 //
-// It's a single Graphics object sitting above the tiles and below the entities;
-// the scene calls redraw() whenever the field changes (a piece placed/sold).
+// Look: additive cyan, banded by strength (discrete tier boundaries), a soft
+// halo at each source centre, and a gentle breathing pulse so it reads as live
+// energy. A single Graphics above the tiles, below entities; the scene calls
+// redraw() whenever the sources change (a conduit placed/sold) and toggles it
+// off in build mode (where the green/red placement overlay takes over).
 // ---------------------------------------------------------------------------
 
 import { ISO, DEPTH } from '../data/game.js';
@@ -21,7 +26,21 @@ export class EnergyView {
 
     this.g = scene.add.graphics();
     this.g.setDepth(DEPTH.tiles + 500); // above tiles, below entities/overlays
+    this.g.setBlendMode(Phaser.BlendModes.ADD);
+
+    // Breathing pulse: tween the layer's alpha so the field feels alive.
+    this.scene.tweens.add({
+      targets: this.g,
+      alpha: { from: ENERGY.field.pulseLo, to: ENERGY.field.pulseHi },
+      duration: ENERGY.field.pulseMs,
+      yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
+    });
+
     this.redraw();
+  }
+
+  setVisible(v) {
+    this.g.setVisible(v);
   }
 
   redraw() {
@@ -30,27 +49,34 @@ export class EnergyView {
 
     const w = ISO.tileWidth;
     const h = ISO.tileHeight;
-    const { bandColors, bandAlphas } = ENERGY.glow;
+    const F = ENERGY.field;
 
+    // Soft emitter halo at each source centre — sources visibly radiate energy.
+    for (const s of this.field.sources) {
+      const pos = this.grid.toScreen(s.c, s.r);
+      g.fillStyle(F.sourceColor, F.sourceGlowA * 0.5);
+      g.fillCircle(pos.x, pos.y, F.sourceGlowR);
+      g.fillStyle(F.sourceColor, F.sourceGlowA);
+      g.fillCircle(pos.x, pos.y, F.sourceGlowR * 0.55);
+    }
+
+    // Banded field fill (generated strength). No edge strokes — they used to
+    // read like tile borders; soft additive fills read as glow instead.
     for (let r = 0; r < this.grid.rows; r++) {
       for (let c = 0; c < this.grid.cols; c++) {
-        let lvl = Math.floor(this.field.availableAt(c, r));
+        let lvl = Math.floor(this.field.generatedAt(c, r));
         if (lvl <= 0) continue;
         if (lvl > ENERGY.maxLevel) lvl = ENERGY.maxLevel;
 
         const pos = this.grid.toScreen(c, r);
+        g.fillStyle(F.bandColors[lvl], F.bandAlphas[lvl]);
         g.beginPath();
         g.moveTo(pos.x, pos.y - h / 2);
         g.lineTo(pos.x + w / 2, pos.y);
         g.lineTo(pos.x, pos.y + h / 2);
         g.lineTo(pos.x - w / 2, pos.y);
         g.closePath();
-
-        g.fillStyle(bandColors[lvl], bandAlphas[lvl]);
         g.fillPath();
-        // A faint band edge makes the discrete 3->2->1 boundaries pop.
-        g.lineStyle(1.5, bandColors[lvl], bandAlphas[lvl] + 0.12);
-        g.strokePath();
       }
     }
   }
