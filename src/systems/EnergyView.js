@@ -28,10 +28,11 @@ export class EnergyView {
     this.heat.setDepth(DEPTH.tiles + 498);
     this.heat.setVisible(false);
 
-    // Always-on blue power glow (tiered + animated; redrawn each frame).
+    // Always-on blue power glow (tiered + animated; redrawn each frame). Normal
+    // blend so opacity is honest on the bright terrain (additive saturated out
+    // the high tiers).
     this.glow = scene.add.graphics();
     this.glow.setDepth(DEPTH.tiles + 500);
-    this.glow.setBlendMode(Phaser.BlendModes.ADD);
 
     this.redraw();
   }
@@ -60,19 +61,19 @@ export class EnergyView {
     this.redrawHeat();
   }
 
-  // A brightness band that sweeps from the source tier (maxLevel) out to the
-  // edge (0) and repeats, so the glow appears to pulse outward along the grid.
-  pulseBoost(level, time) {
+  // The pulse front sweeps from the source tier (maxLevel) out to the edge (0)
+  // and repeats. Returns a 0..1 band intensity for a given level at `time`.
+  pulseAt(level, time) {
     const G = ENERGY.powerGlow;
     const span = ENERGY.maxLevel + 2 * G.pulseBand;
     const phase = (time % G.pulseMs) / G.pulseMs;
     const front = (ENERGY.maxLevel + G.pulseBand) - phase * span;
     const d = Math.abs(level - front);
-    return d < G.pulseBand ? G.pulseAmp * (1 - d / G.pulseBand) : 0;
+    return d < G.pulseBand ? (1 - d / G.pulseBand) : 0;
   }
 
   // Blue grid over the powered region: every powered cell's full diamond
-  // outline glows, brighter the stronger the cell, plus the flowing pulse.
+  // outline, tiered by opacity AND width, plus the flowing pulse on both.
   redrawGlow(time) {
     const g = this.glow;
     g.clear();
@@ -86,8 +87,10 @@ export class EnergyView {
         if (lvl <= 0) continue;
         if (lvl > ENERGY.maxLevel) lvl = ENERGY.maxLevel;
 
-        const a = Math.min(0.95, (G.alphaByLevel[lvl] ?? 0) + this.pulseBoost(lvl, time));
-        g.lineStyle(G.width, G.color, a);
+        const pulse = this.pulseAt(lvl, time);
+        const a = Math.min(0.96, (G.alphaByLevel[lvl] ?? 0) + G.pulseAmp * pulse);
+        const wd = (G.widthByLevel[lvl] ?? 2) + G.pulseWidth * pulse;
+        g.lineStyle(wd, G.color, a);
         const p = this.grid.toScreen(c, r);
         g.beginPath();
         g.moveTo(p.x, p.y - h / 2);

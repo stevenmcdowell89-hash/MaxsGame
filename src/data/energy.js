@@ -80,20 +80,21 @@ export const ENERGY = {
     pulseMs: 1600,
   },
 
-  // Ambient, always-on indicator: a blue glow along the grid lines of the
-  // powered region, TIERED by generated strength — faint at the tier-1 edge,
-  // strongest right at the source. A subtle brightness band also sweeps outward
-  // from the sources through the lines (energy "pulsing" through the field).
-  // The full per-cell heat map is still hidden unless a conduit/base is tapped.
+  // Ambient, always-on indicator: a blue grid along the lines of the powered
+  // region, TIERED by generated strength — faint at the tier-1 edge, strongest
+  // at the source. Drawn with NORMAL blend (additive saturated to white on the
+  // bright terrain, hiding the higher tiers), and tiered by BOTH opacity and
+  // line width so strength reads clearly. A brightness/width band also sweeps
+  // outward from the source through the lines (energy "pulsing" through).
   powerGlow: {
-    color: 0x6fd0ff,
-    width: 2,
-    // Line alpha per generated level (index = level). Edge (1) faint but
-    // visible; source (5) strongest; the old uniform ~0.5 now sits upper-mid.
-    alphaByLevel: [0, 0.16, 0.30, 0.45, 0.60, 0.78],
-    pulseAmp: 0.28,  // extra brightness at the pulse front
-    pulseBand: 1.4,  // band half-width, in tiers
-    pulseMs: 2600,   // sweep period (source -> edge), then repeat
+    color: 0x5ec8ff,
+    // Per generated level (index = level): edge faint, source strong.
+    alphaByLevel: [0, 0.22, 0.38, 0.54, 0.70, 0.88],
+    widthByLevel: [0, 1.5, 1.7, 2.1, 2.6, 3.2],
+    pulseAmp: 0.18,   // opacity boost at the pulse front
+    pulseWidth: 1.8,  // line-width boost (px) at the pulse front
+    pulseBand: 1.3,   // band half-width, in tiers
+    pulseMs: 2400,    // sweep period (source -> edge), then repeat
   },
 
   // Animated consumption flow: motes from each reserved tile into the tower.
