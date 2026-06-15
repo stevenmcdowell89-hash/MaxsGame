@@ -110,6 +110,16 @@ export class GameScene extends Phaser.Scene {
   // ---------------------------------------------------------------- board ----
 
   drawBoard() {
+    // One continuous ground image under the whole board (when the real terrain
+    // loaded). Scaled to COVER the board's world bounds so there's no tiling and
+    // no gaps; the tiles above become light overlays (faint grid + dark path).
+    if (this.textures.exists('terrain-cracked')) {
+      const b = this.grid.getBounds(0);
+      const bg = this.add.image(b.x + b.width / 2, b.y + b.height / 2, 'terrain-cracked');
+      bg.setScale(Math.max(b.width / bg.width, b.height / bg.height) * 1.02);
+      bg.setDepth(DEPTH.tiles - 10);
+    }
+
     const originYFrac = (ISO.tileHeight / 2) / (ISO.tileHeight + TILE_THICKNESS);
     for (let r = 0; r < this.level.rows; r++) {
       for (let c = 0; c < this.level.cols; c++) {

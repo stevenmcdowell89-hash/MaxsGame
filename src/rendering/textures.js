@@ -53,51 +53,23 @@ function makeTileTexture(scene, key, faceColor, edgeColor) {
   g.destroy();
 }
 
-// Build an iso tile from a real ground image: clip the loaded texture into the
-// diamond top face and add darker side faces for the raised-block look. `darken`
-// (0..1) tints the top (used to make the path read as a worn/trodden trail).
-// Falls back to nothing if the source image isn't loaded (caller checks first).
-function makeImageTileTexture(scene, key, srcKey, { darken = 0, edge = '#4a3b24' } = {}) {
+// A transparent iso tile OVERLAY, used when the whole board sits on one
+// continuous ground image (drawn behind the tiles by GameScene): a faint grid
+// for buildable cells, a translucent dark diamond for the worn path. The texture
+// keeps the tileHeight+thickness footprint so the existing origin math lines up.
+function makeOverlayTile(scene, key, { fillColor = 0x000000, fillAlpha = 0, lineColor = 0x000000, lineAlpha = 0 } = {}) {
   const { tileWidth: w, tileHeight: h } = ISO;
   const thickness = 10;
-  const src = scene.textures.get(srcKey).getSourceImage();
-
-  // A 2:1 crop of the source keeps the cracked pattern from squishing into the
-  // diamond's bounding box.
-  const cropW = src.width;
-  const cropH = Math.min(src.height, Math.round(src.width / 2));
-
-  if (scene.textures.exists(key)) scene.textures.remove(key);
-  const canvas = scene.textures.createCanvas(key, w, h + thickness);
-  const ctx = canvas.getContext();
-  ctx.clearRect(0, 0, w, h + thickness);
-
-  // Side faces (thickness) — a flat dark brown so blocks look raised.
-  ctx.fillStyle = edge;
-  ctx.beginPath();
-  ctx.moveTo(0, h / 2); ctx.lineTo(w / 2, h); ctx.lineTo(w / 2, h + thickness); ctx.lineTo(0, h / 2 + thickness);
-  ctx.closePath(); ctx.fill();
-  ctx.beginPath();
-  ctx.moveTo(w / 2, h); ctx.lineTo(w, h / 2); ctx.lineTo(w, h / 2 + thickness); ctx.lineTo(w / 2, h + thickness);
-  ctx.closePath(); ctx.fill();
-
-  // Top face: clip to the diamond and paint the terrain into it.
-  ctx.save();
-  ctx.beginPath();
-  ctx.moveTo(w / 2, 0); ctx.lineTo(w, h / 2); ctx.lineTo(w / 2, h); ctx.lineTo(0, h / 2);
-  ctx.closePath(); ctx.clip();
-  ctx.drawImage(src, 0, 0, cropW, cropH, 0, 0, w, h);
-  if (darken > 0) { ctx.fillStyle = `rgba(20,12,4,${darken})`; ctx.fillRect(0, 0, w, h); }
-  ctx.restore();
-
-  // Outline the top face.
-  ctx.strokeStyle = edge;
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(w / 2, 0); ctx.lineTo(w, h / 2); ctx.lineTo(w / 2, h); ctx.lineTo(0, h / 2);
-  ctx.closePath(); ctx.stroke();
-
-  canvas.refresh();
+  const g = scene.make.graphics({ x: 0, y: 0, add: false });
+  const diamond = () => {
+    g.beginPath();
+    g.moveTo(w / 2, 0); g.lineTo(w, h / 2); g.lineTo(w / 2, h); g.lineTo(0, h / 2);
+    g.closePath();
+  };
+  if (fillAlpha > 0) { g.fillStyle(fillColor, fillAlpha); diamond(); g.fillPath(); }
+  if (lineAlpha > 0) { g.lineStyle(2, lineColor, lineAlpha); diamond(); g.strokePath(); }
+  g.generateTexture(key, w, h + thickness);
+  g.destroy();
 }
 
 // A small robot used for both towers and enemies, drawn at `scale`.
@@ -272,11 +244,13 @@ function makeBaseTexture(scene, key) {
 
 // Public entry: generate every placeholder texture. Called once from BootScene.
 export function generatePlaceholderTextures(scene) {
-  // Real ground texture if it loaded (BootScene), else the flat-colour diamonds.
-  // The path is the same earth, darkened so it reads as a worn trail.
+  // With the real ground image, the whole board is ONE picture (GameScene draws
+  // it behind the tiles); the tiles become light overlays on top — a faint grid
+  // for buildable cells and a translucent dark diamond for the worn path.
+  // Without it, fall back to the procedural flat-colour block diamonds.
   if (scene.textures.exists('terrain-cracked')) {
-    makeImageTileTexture(scene, 'tile-ground', 'terrain-cracked', { darken: 0 });
-    makeImageTileTexture(scene, 'tile-path', 'terrain-cracked', { darken: 0.4 });
+    makeOverlayTile(scene, 'tile-ground', { lineColor: 0x241a0e, lineAlpha: 0.12 });
+    makeOverlayTile(scene, 'tile-path', { fillColor: 0x140d04, fillAlpha: 0.42, lineColor: 0x140d04, lineAlpha: 0.4 });
   } else {
     makeTileTexture(scene, 'tile-ground', PALETTE.tileGround, PALETTE.tileGroundEdge);
     makeTileTexture(scene, 'tile-path', PALETTE.tilePath, PALETTE.tilePathEdge);
