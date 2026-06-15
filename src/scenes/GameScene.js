@@ -111,13 +111,32 @@ export class GameScene extends Phaser.Scene {
 
   drawBoard() {
     // One continuous ground image under the whole board (when the real terrain
-    // loaded). Scaled to COVER the board's world bounds so there's no tiling and
-    // no gaps; the tiles above become light overlays (faint grid + dark path).
+    // loaded), scaled to COVER the board's world bounds (no tiling, no gaps) and
+    // CLIPPED to the board's iso diamond so only the gameboard shows — no
+    // rectangular border. The tiles above become light overlays (grid + path).
     if (this.textures.exists('terrain-cracked')) {
       const b = this.grid.getBounds(0);
       const bg = this.add.image(b.x + b.width / 2, b.y + b.height / 2, 'terrain-cracked');
       bg.setScale(Math.max(b.width / bg.width, b.height / bg.height) * 1.02);
       bg.setDepth(DEPTH.tiles - 10);
+
+      // Mask = the outer rhombus of the whole grid (corner tiles' outer vertices).
+      const halfW = ISO.tileWidth / 2, halfH = ISO.tileHeight / 2;
+      const p00 = this.grid.toScreen(0, 0);
+      const pR = this.grid.toScreen(this.level.cols - 1, 0);
+      const pB = this.grid.toScreen(this.level.cols - 1, this.level.rows - 1);
+      const pL = this.grid.toScreen(0, this.level.rows - 1);
+      const maskG = this.make.graphics({ add: false });
+      maskG.fillStyle(0xffffff);
+      maskG.beginPath();
+      maskG.moveTo(p00.x, p00.y - halfH);   // top vertex
+      maskG.lineTo(pR.x + halfW, pR.y);      // right vertex
+      maskG.lineTo(pB.x, pB.y + halfH);      // bottom vertex
+      maskG.lineTo(pL.x - halfW, pL.y);      // left vertex
+      maskG.closePath();
+      maskG.fillPath();
+      bg.setMask(maskG.createGeometryMask());
+      this._terrainMask = maskG; // keep a ref alive for the mask
     }
 
     const originYFrac = (ISO.tileHeight / 2) / (ISO.tileHeight + TILE_THICKNESS);
