@@ -53,6 +53,53 @@ function makeTileTexture(scene, key, faceColor, edgeColor) {
   g.destroy();
 }
 
+// Build an iso tile from a real ground image: clip the loaded texture into the
+// diamond top face and add darker side faces for the raised-block look. `darken`
+// (0..1) tints the top (used to make the path read as a worn/trodden trail).
+// Falls back to nothing if the source image isn't loaded (caller checks first).
+function makeImageTileTexture(scene, key, srcKey, { darken = 0, edge = '#4a3b24' } = {}) {
+  const { tileWidth: w, tileHeight: h } = ISO;
+  const thickness = 10;
+  const src = scene.textures.get(srcKey).getSourceImage();
+
+  // A 2:1 crop of the source keeps the cracked pattern from squishing into the
+  // diamond's bounding box.
+  const cropW = src.width;
+  const cropH = Math.min(src.height, Math.round(src.width / 2));
+
+  if (scene.textures.exists(key)) scene.textures.remove(key);
+  const canvas = scene.textures.createCanvas(key, w, h + thickness);
+  const ctx = canvas.getContext();
+  ctx.clearRect(0, 0, w, h + thickness);
+
+  // Side faces (thickness) — a flat dark brown so blocks look raised.
+  ctx.fillStyle = edge;
+  ctx.beginPath();
+  ctx.moveTo(0, h / 2); ctx.lineTo(w / 2, h); ctx.lineTo(w / 2, h + thickness); ctx.lineTo(0, h / 2 + thickness);
+  ctx.closePath(); ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(w / 2, h); ctx.lineTo(w, h / 2); ctx.lineTo(w, h / 2 + thickness); ctx.lineTo(w / 2, h + thickness);
+  ctx.closePath(); ctx.fill();
+
+  // Top face: clip to the diamond and paint the terrain into it.
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(w / 2, 0); ctx.lineTo(w, h / 2); ctx.lineTo(w / 2, h); ctx.lineTo(0, h / 2);
+  ctx.closePath(); ctx.clip();
+  ctx.drawImage(src, 0, 0, cropW, cropH, 0, 0, w, h);
+  if (darken > 0) { ctx.fillStyle = `rgba(20,12,4,${darken})`; ctx.fillRect(0, 0, w, h); }
+  ctx.restore();
+
+  // Outline the top face.
+  ctx.strokeStyle = edge;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(w / 2, 0); ctx.lineTo(w, h / 2); ctx.lineTo(w / 2, h); ctx.lineTo(0, h / 2);
+  ctx.closePath(); ctx.stroke();
+
+  canvas.refresh();
+}
+
 // A small robot used for both towers and enemies, drawn at `scale`.
 // Origin of the produced texture is top-left; entities set origin to bottom
 // centre so the robot stands on its tile.
@@ -225,8 +272,15 @@ function makeBaseTexture(scene, key) {
 
 // Public entry: generate every placeholder texture. Called once from BootScene.
 export function generatePlaceholderTextures(scene) {
-  makeTileTexture(scene, 'tile-ground', PALETTE.tileGround, PALETTE.tileGroundEdge);
-  makeTileTexture(scene, 'tile-path', PALETTE.tilePath, PALETTE.tilePathEdge);
+  // Real ground texture if it loaded (BootScene), else the flat-colour diamonds.
+  // The path is the same earth, darkened so it reads as a worn trail.
+  if (scene.textures.exists('terrain-cracked')) {
+    makeImageTileTexture(scene, 'tile-ground', 'terrain-cracked', { darken: 0 });
+    makeImageTileTexture(scene, 'tile-path', 'terrain-cracked', { darken: 0.4 });
+  } else {
+    makeTileTexture(scene, 'tile-ground', PALETTE.tileGround, PALETTE.tileGroundEdge);
+    makeTileTexture(scene, 'tile-path', PALETTE.tilePath, PALETTE.tilePathEdge);
+  }
 
   // Only generate a placeholder when a real asset hasn't already been loaded
   // under that key (see BootScene.preload). This is the art seam in action.

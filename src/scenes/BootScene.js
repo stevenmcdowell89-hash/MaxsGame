@@ -18,6 +18,11 @@ export class BootScene extends Phaser.Scene {
   }
 
   preload() {
+    // Real hand-drawn ground texture: the iso tiles are generated from it at
+    // boot (see rendering/textures.js). Loaded under a source key; if it's
+    // missing the tiles fall back to the procedural flat-colour diamonds.
+    this.load.image('terrain-cracked', 'assets/terrain/cracked-earth.png');
+
     // Load real hand-drawn art for any tower/enemy that declares an `asset`.
     // It loads under the same texture key the placeholder would use, so the
     // rest of the game is unaffected. Anything without an `asset` falls back to
