@@ -52,6 +52,8 @@ export class GameScene extends Phaser.Scene {
 
     // Currently inspected tower (tap a built tower to see its range + sell it).
     this.selectedTower = null;
+    // Whether the core/base is being inspected (reveals the energy heat map).
+    this.inspectingBase = false;
 
     // ---- Audio (persist one AudioManager across scene restarts) ----
     this.audio = this.registry.get('audio');
@@ -249,7 +251,7 @@ export class GameScene extends Phaser.Scene {
     this._onBuildMode = ({ active, towerId }) => {
       const def = TOWERS[towerId || DEFAULT_TOWER_ID];
       // Inspecting and building are mutually exclusive interactions.
-      if (active) this.deselectTower();
+      if (active) { this.deselectTower(); this.clearBaseInspect(); }
       // The field glow and the green/red placement overlay would fight for the
       // same tiles, so hand the board to the overlay while building.
       this.energyView.setVisible(!active);
@@ -402,22 +404,64 @@ export class GameScene extends Phaser.Scene {
 
   // ----------------------------------------------------- tower inspect ----
 
-  // A tap that wasn't consumed by build mode: select a built tower (showing its
-  // range + a sell option) or deselect when tapping elsewhere on the board.
+  // A tap that wasn't consumed by build mode: select a built tower (range +
+  // sell), inspect the base/a conduit (reveals the energy heat map), or deselect
+  // when tapping elsewhere.
   handleSelectTap(worldX, worldY) {
     if (this.gameOver) return;
     const cell = this.grid.cellAt(worldX, worldY);
     // Off-board taps (e.g. on the HUD bars) shouldn't change the selection.
     if (!cell) return;
-    const tower = this.towerAt(cell);
-    if (tower) {
-      if (this.selectedTower === tower) this.deselectTower();
-      else this.selectTower(tower);
+
+    const bc = this.grid.baseCell;
+    if (cell.c === bc.c && cell.r === bc.r) {
+      // The base is the primary energy source — tapping it shows the field.
+      if (this.inspectingBase) this.clearBaseInspect();
+      else { this.deselectTower(); this.inspectBase(); }
     } else {
-      this.deselectTower();
+      const tower = this.towerAt(cell);
+      if (tower) {
+        if (this.selectedTower === tower) this.deselectTower();
+        else { this.clearBaseInspect(); this.selectTower(tower); }
+      } else {
+        this.deselectTower();
+        this.clearBaseInspect();
+      }
     }
     // Debug readout: show the tapped tile's raw energy numbers.
     this.showTileInfo(cell);
+  }
+
+  // Inspect the core: highlight its tile and reveal the energy heat map (the
+  // base is the main source, so this is the natural "show me the power" tap).
+  inspectBase() {
+    this.inspectingBase = true;
+    this.energyView.setInspecting(true);
+    const bc = this.grid.baseCell;
+    const pos = this.grid.toScreen(bc.c, bc.r);
+    const w = ISO.tileWidth, h = ISO.tileHeight;
+    const g = this.footprintView;
+    g.clear();
+    g.fillStyle(0x8be9ff, 0.18);
+    g.lineStyle(2, 0x8be9ff, 0.7);
+    g.beginPath();
+    g.moveTo(pos.x, pos.y - h / 2);
+    g.lineTo(pos.x + w / 2, pos.y);
+    g.lineTo(pos.x, pos.y + h / 2);
+    g.lineTo(pos.x - w / 2, pos.y);
+    g.closePath();
+    g.fillPath();
+    g.strokePath();
+    g.setVisible(true);
+    this.audio.select();
+  }
+
+  clearBaseInspect() {
+    if (!this.inspectingBase) return;
+    this.inspectingBase = false;
+    this.energyView.setInspecting(false);
+    this.footprintView.clear();
+    this.footprintView.setVisible(false);
   }
 
   // A small, fixed-position readout (numbers are fine here — kept off the main
@@ -441,8 +485,9 @@ export class GameScene extends Phaser.Scene {
     this.selectedTower = tower;
     this.drawRangeRing(tower);
     this.drawPieceFootprint(tower);
-    // Reveal the full per-cell energy heat map while inspecting a piece.
-    this.energyView.setInspecting(true);
+    // The energy heat map is an energy-piece readout: show it for a conduit
+    // (and the base), but not for normal attacking towers.
+    this.energyView.setInspecting(!!tower.def.isSource);
     this.audio.select();
     EventBus.emit(EVENTS.TOWER_SELECTED, { refund: this.refundFor(tower) });
   }
@@ -638,6 +683,7 @@ export class GameScene extends Phaser.Scene {
     this.waveActive = false;
     this.placement.setMode(false);
     this.deselectTower();
+    this.clearBaseInspect();
 
     SaveManager.recordResult({ win, wavesCleared: this.clearedWaves });
     if (win) this.audio.win(); else this.audio.lose();

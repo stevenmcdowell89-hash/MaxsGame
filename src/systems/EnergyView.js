@@ -61,8 +61,8 @@ export class EnergyView {
     this.redrawHeat();
   }
 
-  // Blue line along each powered cell's edge that borders an UN-powered cell —
-  // i.e. the outline surrounding the live region.
+  // Blue grid over the powered region: every powered cell's full diamond
+  // outline glows (interior lines as well as the boundary).
   redrawGlow() {
     const g = this.glow;
     g.clear();
@@ -75,15 +75,13 @@ export class EnergyView {
       for (let c = 0; c < this.grid.cols; c++) {
         if (!this.powered(c, r)) continue;
         const p = this.grid.toScreen(c, r);
-        const tx = p.x,        ty = p.y - h / 2; // top vertex
-        const rx = p.x + w / 2, ry = p.y;        // right vertex
-        const bx = p.x,        by = p.y + h / 2; // bottom vertex
-        const lx = p.x - w / 2, ly = p.y;        // left vertex
-        // Each diamond edge faces one grid-orthogonal neighbour.
-        if (!this.powered(c, r - 1)) g.lineBetween(tx, ty, rx, ry); // upper-right
-        if (!this.powered(c + 1, r)) g.lineBetween(rx, ry, bx, by); // lower-right
-        if (!this.powered(c, r + 1)) g.lineBetween(bx, by, lx, ly); // lower-left
-        if (!this.powered(c - 1, r)) g.lineBetween(lx, ly, tx, ty); // upper-left
+        g.beginPath();
+        g.moveTo(p.x, p.y - h / 2);
+        g.lineTo(p.x + w / 2, p.y);
+        g.lineTo(p.x, p.y + h / 2);
+        g.lineTo(p.x - w / 2, p.y);
+        g.closePath();
+        g.strokePath();
       }
     }
   }
