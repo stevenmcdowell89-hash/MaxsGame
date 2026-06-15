@@ -92,10 +92,12 @@ export const ENERGY = {
   powerGlow: {
     color: 0x73d3ff,      // blue body
     coreColor: 0xeafaff,  // white-hot core
-    // Per generated level (index = level): edge clearly visible, source strong.
-    alphaByLevel: [0, 0.46, 0.60, 0.74, 0.88, 1.0],
-    coreAlphaByLevel: [0, 0.20, 0.28, 0.37, 0.48, 0.62],
-    widthByLevel: [0, 2.0, 2.3, 2.8, 3.4, 4.2],
+    // Per generated level (index = level): widened spread for clearer contrast —
+    // edge dimmer (but not as faint as before), lower-mid down a touch, the
+    // upper tiers and source kept strong.
+    alphaByLevel: [0, 0.34, 0.50, 0.70, 0.88, 1.0],
+    coreAlphaByLevel: [0, 0.12, 0.22, 0.34, 0.48, 0.64],
+    widthByLevel: [0, 1.7, 2.1, 2.7, 3.4, 4.3],
     pulseAmp: 0.16,   // body opacity boost at the pulse front
     pulseWidth: 2.0,  // line-width boost (px) at the pulse front
     pulseCore: 0.38,  // white-core opacity boost at the front (the lightning flash)
