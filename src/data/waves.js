@@ -19,6 +19,11 @@ export const WAVES = {
     { reward: 30, groups: [{ type: 'scrapling', count: 8, interval: 850 }] },
     { reward: 35, groups: [{ type: 'scrapling', count: 11, interval: 750 }] },
     { reward: 45, groups: [{ type: 'scrapling', count: 14, interval: 650 }] },
-    { reward: 70, groups: [{ type: 'scrapling', count: 18, interval: 520 }] },
+    { reward: 60, groups: [{ type: 'scrapling', count: 18, interval: 520 }] },
+    { reward: 70, groups: [{ type: 'scrapling', count: 22, interval: 480 }] },
+    { reward: 85, groups: [{ type: 'scrapling', count: 26, interval: 440 }] },
+    { reward: 100, groups: [{ type: 'scrapling', count: 30, interval: 400 }] },
+    { reward: 120, groups: [{ type: 'scrapling', count: 36, interval: 360 }] },
+    { reward: 175, groups: [{ type: 'scrapling', count: 44, interval: 320 }] },
   ],
 };

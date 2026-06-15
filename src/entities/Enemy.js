@@ -21,9 +21,20 @@ export class Enemy extends Phaser.GameObjects.Container {
     this.def = def;
     this.hp = def.maxHp;
     this.maxHp = def.maxHp;
-    this.speed = def.speed * tileStep; // tiles/sec -> px/sec
+    this.tileStep = tileStep;
     this.reward = def.reward;
     this.damage = def.damage;
+
+    // Speed wander: each enemy independently re-rolls its speed within
+    // `speedRange` every `speedVaryMs`, so the pack breathes rather than
+    // marching in lockstep. Falls back to a fixed `speed` if no range given.
+    this.speedRange = def.speedRange || null;
+    this.speedVaryMs = def.speedVaryMs || [2000, 3500];
+    if (this.speedRange) {
+      this.rollSpeed();
+    } else {
+      this.speed = def.speed * tileStep; // tiles/sec -> px/sec
+    }
 
     this.waypoints = waypoints;
     this.wpIndex = 1; // heading toward the second point
@@ -52,6 +63,14 @@ export class Enemy extends Phaser.GameObjects.Container {
 
   updateDepth() {
     this.setDepth(DEPTH.entityBase + this.y);
+  }
+
+  // Pick a fresh random speed (tiles/sec -> px/sec) and the delay until the next
+  // re-roll. Each enemy rolls independently.
+  rollSpeed() {
+    const [lo, hi] = this.speedRange;
+    this.speed = Phaser.Math.FloatBetween(lo, hi) * this.tileStep;
+    this.speedTimer = Phaser.Math.Between(this.speedVaryMs[0], this.speedVaryMs[1]);
   }
 
   takeDamage(amount, audio) {
@@ -111,6 +130,12 @@ export class Enemy extends Phaser.GameObjects.Container {
   // Returns 'moving' | 'reachedBase'. Death is handled via takeDamage.
   update(delta) {
     if (!this.alive) return 'dead';
+
+    // Drift speed every few seconds.
+    if (this.speedRange) {
+      this.speedTimer -= delta;
+      if (this.speedTimer <= 0) this.rollSpeed();
+    }
 
     const dt = delta / 1000;
     let remaining = this.speed * dt;

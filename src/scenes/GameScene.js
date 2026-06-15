@@ -9,7 +9,8 @@ import { GAME, ISO, PALETTE, DEPTH } from '../data/game.js';
 import { LEVELS, DEFAULT_LEVEL_ID } from '../data/levels.js';
 import { WAVES } from '../data/waves.js';
 import { ENEMIES } from '../data/enemies.js';
-import { TOWERS, DEFAULT_TOWER_ID } from '../data/towers.js';
+import { TOWERS, TOWER_LIST, DEFAULT_TOWER_ID, TIER_CAPS } from '../data/towers.js';
+import { ENERGY } from '../data/energy.js';
 
 import { EventBus, EVENTS } from '../core/EventBus.js';
 import { SaveManager } from '../core/SaveManager.js';
@@ -19,6 +20,9 @@ import { IsoGrid } from '../systems/IsoGrid.js';
 import { PlacementManager } from '../systems/PlacementManager.js';
 import { WaveManager } from '../systems/WaveManager.js';
 import { CameraController } from '../systems/CameraController.js';
+import { EnergyField } from '../systems/EnergyField.js';
+import { EnergyView } from '../systems/EnergyView.js';
+import { FlowView } from '../systems/FlowView.js';
 
 import { Enemy } from '../entities/Enemy.js';
 import { Tower } from '../entities/Tower.js';
@@ -48,6 +52,8 @@ export class GameScene extends Phaser.Scene {
 
     // Currently inspected tower (tap a built tower to see its range + sell it).
     this.selectedTower = null;
+    // Whether the core/base is being inspected (reveals the energy heat map).
+    this.inspectingBase = false;
 
     // ---- Audio (persist one AudioManager across scene restarts) ----
     this.audio = this.registry.get('audio');
@@ -61,10 +67,30 @@ export class GameScene extends Phaser.Scene {
     this.grid = new IsoGrid(this.level, playArea);
     this.drawBoard();
 
+    // ---- Energy field (core is the primary source) + its glow layer ----
+    this.energy = new EnergyField(this.grid);
+    this.energyView = new EnergyView(this, this.grid, this.energy);
+    // Animated consumption: motes flowing from drained tiles into each tower.
+    this.flowView = new FlowView(this, this.grid, this.energy);
+
+    // Small debug readout: tap a tile to print its raw strength (numbers stay
+    // out of the main view — the field reads via the glow + placement overlay).
+    this.tileInfo = this.add.text(16, 70, '', {
+      fontFamily: 'system-ui, monospace', fontSize: '16px',
+      color: '#bfeaff', backgroundColor: 'rgba(10,8,20,0.72)', padding: { x: 8, y: 4 },
+    }).setScrollFactor(0).setDepth(DEPTH.ui).setVisible(false);
+
     // Range ring shown when a built tower is selected (below entities).
     this.rangeRing = this.add.graphics();
     this.rangeRing.setDepth(DEPTH.entityBase - 1);
     this.rangeRing.setVisible(false);
+
+    // Footprint shown when a piece is selected: the tiles it draws from (amber,
+    // towers) or feeds (cyan, conduit), with connector lines back to the piece —
+    // a clear "this piece is swapping energy with these tiles" readout.
+    this.footprintView = this.add.graphics();
+    this.footprintView.setDepth(DEPTH.entityBase - 1);
+    this.footprintView.setVisible(false);
 
     // ---- Systems ----
     this.placement = new PlacementManager(this, this.grid);
@@ -86,6 +112,35 @@ export class GameScene extends Phaser.Scene {
   // ---------------------------------------------------------------- board ----
 
   drawBoard() {
+    // One continuous ground image under the whole board (when the real terrain
+    // loaded), scaled to COVER the board's world bounds (no tiling, no gaps) and
+    // CLIPPED to the board's iso diamond so only the gameboard shows — no
+    // rectangular border. The tiles above become light overlays (grid + path).
+    if (this.textures.exists('terrain-cracked')) {
+      const b = this.grid.getBounds(0);
+      const bg = this.add.image(b.x + b.width / 2, b.y + b.height / 2, 'terrain-cracked');
+      bg.setScale(Math.max(b.width / bg.width, b.height / bg.height) * 1.02);
+      bg.setDepth(DEPTH.tiles - 10);
+
+      // Mask = the outer rhombus of the whole grid (corner tiles' outer vertices).
+      const halfW = ISO.tileWidth / 2, halfH = ISO.tileHeight / 2;
+      const p00 = this.grid.toScreen(0, 0);
+      const pR = this.grid.toScreen(this.level.cols - 1, 0);
+      const pB = this.grid.toScreen(this.level.cols - 1, this.level.rows - 1);
+      const pL = this.grid.toScreen(0, this.level.rows - 1);
+      const maskG = this.make.graphics({ add: false });
+      maskG.fillStyle(0xffffff);
+      maskG.beginPath();
+      maskG.moveTo(p00.x, p00.y - halfH);   // top vertex
+      maskG.lineTo(pR.x + halfW, pR.y);      // right vertex
+      maskG.lineTo(pB.x, pB.y + halfH);      // bottom vertex
+      maskG.lineTo(pL.x - halfW, pL.y);      // left vertex
+      maskG.closePath();
+      maskG.fillPath();
+      bg.setMask(maskG.createGeometryMask());
+      this._terrainMask = maskG; // keep a ref alive for the mask
+    }
+
     const originYFrac = (ISO.tileHeight / 2) / (ISO.tileHeight + TILE_THICKNESS);
     for (let r = 0; r < this.level.rows; r++) {
       for (let c = 0; c < this.level.cols; c++) {
@@ -117,6 +172,10 @@ export class GameScene extends Phaser.Scene {
     const cam = this.cameras.main;
     const bounds = this.grid.getBounds(48);
     cam.setBounds(bounds.x, bounds.y, bounds.width, bounds.height);
+    // World-space board bounds, reused to cull stray projectiles. (The board is
+    // larger than the logical viewport, so projectiles must be culled against
+    // THIS, not scene.scale — otherwise shots near the edges die instantly.)
+    this.worldBounds = bounds;
 
     // Zoom at which the whole board fits the viewport — the most zoomed-out we
     // allow (and the starting view, so the big map reads at a glance).
@@ -192,12 +251,16 @@ export class GameScene extends Phaser.Scene {
     this._onBuildMode = ({ active, towerId }) => {
       const def = TOWERS[towerId || DEFAULT_TOWER_ID];
       // Inspecting and building are mutually exclusive interactions.
-      if (active) this.deselectTower();
+      if (active) { this.deselectTower(); this.clearBaseInspect(); }
+      // The field glow and the green/red placement overlay would fight for the
+      // same tiles, so hand the board to the overlay while building.
+      this.energyView.setVisible(!active);
+      this.flowView.setVisible(!active);
       this.placement.setMode(active, def);
       // In build mode a one-finger drag aims the highlight, so disable one-finger
       // panning (two-finger pinch/pan still works); restore it otherwise.
       this.camCtl.setSingleDragPan(!active);
-      EventBus.emit(EVENTS.BUILD_MODE_CHANGED, active);
+      EventBus.emit(EVENTS.BUILD_MODE_CHANGED, { active, pieceId: def.id });
     };
     // HUD boots after this scene on first load, so it can miss the STATE_INIT
     // we emit in create(). When the HUD signals it's ready, (re)publish state.
@@ -239,9 +302,15 @@ export class GameScene extends Phaser.Scene {
       totalWaves: this.waves.totalWaves,
       best: SaveManager.getBestWave(),
       muted: this.audio.muted,
-      tower: TOWERS[DEFAULT_TOWER_ID],
+      // The build bar is driven entirely by data: every piece, in order.
+      pieces: TOWER_LIST.map((t) => ({
+        id: t.id, name: t.name, cost: t.cost,
+        tier: t.tier ?? 0, isSource: !!t.isSource,
+        max: TIER_CAPS[t.tier ?? 0] ?? null,
+      })),
     });
     EventBus.emit(EVENTS.WAVE_READY, true);
+    this.emitCounts();
   }
 
   // ------------------------------------------------------------- economy ----
@@ -274,7 +343,7 @@ export class GameScene extends Phaser.Scene {
 
   // -------------------------------------------------------------- towers ----
 
-  tryBuildTower(cell, def) {
+  tryBuildPiece(cell, def) {
     if (!this.grid.isBuildable(cell.c, cell.r)) {
       this.audio.deny();
       return;
@@ -283,13 +352,59 @@ export class GameScene extends Phaser.Scene {
       this.audio.deny();
       return;
     }
+    // Per-tier build cap (conduits, tier 0, are uncapped).
+    const tier = def.tier ?? 0;
+    if (tier > 0 && TIER_CAPS[tier] != null && this.countByTier(tier) >= TIER_CAPS[tier]) {
+      this.audio.deny();
+      return;
+    }
+    // Energy gate: enough generated strength for the piece's tier AND its
+    // footprint must be clear of other pieces' reservations.
+    if (!this.energy.canPlace(cell.c, cell.r, def)) {
+      this.audio.deny();
+      return;
+    }
     this.spendGold(def.cost);
     this.grid.occupy(cell.c, cell.r);
     const pos = this.grid.toScreen(cell.c, cell.r);
-    const tower = new Tower(this, def, cell, pos, this.rangePxFor(def));
-    this.towers.push(tower);
+    const rangePx = def.range ? this.rangePxFor(def) : 0;
+    const piece = new Tower(this, def, cell, pos, rangePx);
+    this.towers.push(piece);
+
+    // Register the piece with the energy field, then recompute everything.
+    this.energy.addPiece(cell.c, cell.r, def);
+    this.refreshEnergy();
+    this.emitCounts();
+
     this.audio.place();
     this.spawnPlaceDust(pos);
+  }
+
+  countByTier(tier) {
+    let n = 0;
+    for (const t of this.towers) if ((t.def.tier ?? 0) === tier) n++;
+    return n;
+  }
+
+  emitCounts() {
+    EventBus.emit(EVENTS.COUNTS_CHANGED, {
+      1: this.countByTier(1), 2: this.countByTier(2), 3: this.countByTier(3),
+    });
+  }
+
+  // Recompute the field and push the consequences everywhere it shows: the glow
+  // layer, each piece's powered/brownout state, and the live build overlay.
+  refreshEnergy() {
+    this.energy.recompute();
+    this.energyView.redraw();
+    this.updatePoweredStates();
+    if (this.placement.active) this.placement.refreshOverlay();
+  }
+
+  updatePoweredStates() {
+    for (const t of this.towers) {
+      t.setPowered(this.energy.poweredFor(t.cell.c, t.cell.r, t.def));
+    }
   }
 
   spawnPlaceDust(pos) {
@@ -310,20 +425,77 @@ export class GameScene extends Phaser.Scene {
 
   // ----------------------------------------------------- tower inspect ----
 
-  // A tap that wasn't consumed by build mode: select a built tower (showing its
-  // range + a sell option) or deselect when tapping elsewhere on the board.
+  // A tap that wasn't consumed by build mode: select a built tower (range +
+  // sell), inspect the base/a conduit (reveals the energy heat map), or deselect
+  // when tapping elsewhere.
   handleSelectTap(worldX, worldY) {
     if (this.gameOver) return;
     const cell = this.grid.cellAt(worldX, worldY);
     // Off-board taps (e.g. on the HUD bars) shouldn't change the selection.
     if (!cell) return;
-    const tower = this.towerAt(cell);
-    if (tower) {
-      if (this.selectedTower === tower) this.deselectTower();
-      else this.selectTower(tower);
+
+    const bc = this.grid.baseCell;
+    if (cell.c === bc.c && cell.r === bc.r) {
+      // The base is the primary energy source — tapping it shows the field.
+      if (this.inspectingBase) this.clearBaseInspect();
+      else { this.deselectTower(); this.inspectBase(); }
     } else {
-      this.deselectTower();
+      const tower = this.towerAt(cell);
+      if (tower) {
+        if (this.selectedTower === tower) this.deselectTower();
+        else { this.clearBaseInspect(); this.selectTower(tower); }
+      } else {
+        this.deselectTower();
+        this.clearBaseInspect();
+      }
     }
+    // Debug readout: show the tapped tile's raw energy numbers.
+    this.showTileInfo(cell);
+  }
+
+  // Inspect the core: highlight its tile and reveal the energy heat map (the
+  // base is the main source, so this is the natural "show me the power" tap).
+  inspectBase() {
+    this.inspectingBase = true;
+    this.energyView.setInspecting(true);
+    const bc = this.grid.baseCell;
+    const pos = this.grid.toScreen(bc.c, bc.r);
+    const w = ISO.tileWidth, h = ISO.tileHeight;
+    const g = this.footprintView;
+    g.clear();
+    g.fillStyle(0x8be9ff, 0.18);
+    g.lineStyle(2, 0x8be9ff, 0.7);
+    g.beginPath();
+    g.moveTo(pos.x, pos.y - h / 2);
+    g.lineTo(pos.x + w / 2, pos.y);
+    g.lineTo(pos.x, pos.y + h / 2);
+    g.lineTo(pos.x - w / 2, pos.y);
+    g.closePath();
+    g.fillPath();
+    g.strokePath();
+    g.setVisible(true);
+    this.audio.select();
+  }
+
+  clearBaseInspect() {
+    if (!this.inspectingBase) return;
+    this.inspectingBase = false;
+    this.energyView.setInspecting(false);
+    this.footprintView.clear();
+    this.footprintView.setVisible(false);
+  }
+
+  // A small, fixed-position readout (numbers are fine here — kept off the main
+  // view). Auto-hides after a moment.
+  showTileInfo(cell) {
+    const gen = this.energy.generatedAt(cell.c, cell.r);
+    const reserved = this.energy.isReserved(cell.c, cell.r);
+    this.tileInfo.setText(
+      `tile ${cell.c},${cell.r}   energy ${gen}   (powers ≤ T${gen})` +
+      (reserved ? '   • RESERVED' : ''));
+    this.tileInfo.setVisible(true);
+    if (this._tileInfoTimer) this._tileInfoTimer.remove();
+    this._tileInfoTimer = this.time.delayedCall(2600, () => this.tileInfo.setVisible(false));
   }
 
   towerAt(cell) {
@@ -333,6 +505,10 @@ export class GameScene extends Phaser.Scene {
   selectTower(tower) {
     this.selectedTower = tower;
     this.drawRangeRing(tower);
+    this.drawPieceFootprint(tower);
+    // The energy heat map is an energy-piece readout: show it for a conduit
+    // (and the base), but not for normal attacking towers.
+    this.energyView.setInspecting(!!tower.def.isSource);
     this.audio.select();
     EventBus.emit(EVENTS.TOWER_SELECTED, { refund: this.refundFor(tower) });
   }
@@ -342,10 +518,67 @@ export class GameScene extends Phaser.Scene {
     this.selectedTower = null;
     this.rangeRing.clear();
     this.rangeRing.setVisible(false);
+    this.footprintView.clear();
+    this.footprintView.setVisible(false);
+    this.energyView.setInspecting(false);
     EventBus.emit(EVENTS.TOWER_DESELECTED);
   }
 
+  // Outline the cells the selected piece reserves and draw a line from the piece
+  // to each — its energy "footprint" by tier (amber for a tower, cyan for a
+  // conduit). A tier-1 reserves nothing extra, so only its own tile shows.
+  drawPieceFootprint(tower) {
+    const g = this.footprintView;
+    g.clear();
+    const isSource = !!tower.def.isSource;
+    const color = isSource ? ENERGY.overlay.sourceColor : ENERGY.overlay.drawColor;
+    const { footprintFill, footprintLine } = ENERGY.overlay;
+    const w = ISO.tileWidth;
+    const h = ISO.tileHeight;
+
+    const diamond = (pos) => {
+      g.beginPath();
+      g.moveTo(pos.x, pos.y - h / 2);
+      g.lineTo(pos.x + w / 2, pos.y);
+      g.lineTo(pos.x, pos.y + h / 2);
+      g.lineTo(pos.x - w / 2, pos.y);
+      g.closePath();
+    };
+
+    // The piece's own tile (always reserved).
+    const own = this.grid.toScreen(tower.cell.c, tower.cell.r);
+    g.fillStyle(color, footprintFill + 0.08);
+    g.lineStyle(2, color, footprintLine);
+    diamond(own);
+    g.fillPath();
+    g.strokePath();
+
+    const cells = [];
+    for (const o of this.energy.footprintFor(tower.def)) {
+      const c = tower.cell.c + o.dc, r = tower.cell.r + o.dr;
+      if (this.grid.inBounds(c, r)) cells.push({ c, r });
+    }
+
+    for (const cc of cells) {
+      const pos = this.grid.toScreen(cc.c, cc.r);
+      g.lineStyle(2, color, footprintLine * 0.5);
+      g.lineBetween(tower.x, tower.y - 6, pos.x, pos.y);
+      g.fillStyle(color, footprintFill);
+      g.lineStyle(2, color, footprintLine);
+      diamond(pos);
+      g.fillPath();
+      g.strokePath();
+    }
+    g.setVisible(true);
+  }
+
   drawRangeRing(tower) {
+    // Conduits have no range — selecting one just offers the sell option.
+    if (!tower.rangePx) {
+      this.rangeRing.clear();
+      this.rangeRing.setVisible(false);
+      return;
+    }
     const color = PALETTE.tileBuildOk;
     this.rangeRing.clear();
     this.rangeRing.lineStyle(2, color, 0.6);
@@ -368,7 +601,14 @@ export class GameScene extends Phaser.Scene {
     if (idx >= 0) this.towers.splice(idx, 1);
     this.deselectTower();
     this.spawnPlaceDust({ x: tower.x, y: tower.y });
+
+    // Deregister from the energy field and recompute (frees its reserved cells;
+    // a removed conduit may shrink the powered zone and brown out towers).
+    this.energy.removePieceAt(tower.cell.c, tower.cell.r);
     tower.destroy();
+    this.refreshEnergy();
+    this.emitCounts();
+
     this.addGold(refund);
     this.audio.sell();
   }
@@ -465,6 +705,7 @@ export class GameScene extends Phaser.Scene {
     this.waveActive = false;
     this.placement.setMode(false);
     this.deselectTower();
+    this.clearBaseInspect();
 
     SaveManager.recordResult({ win, wavesCleared: this.clearedWaves });
     if (win) this.audio.win(); else this.audio.lose();
@@ -528,6 +769,12 @@ export class GameScene extends Phaser.Scene {
       const status = p.update(delta);
       if (status === 'done') this.projectiles.splice(i, 1);
     }
+
+    // Animate the field: the tiered power glow pulses outward; consumption motes
+    // flow into towers (the latter skipped in build mode where the overlay owns
+    // the board).
+    this.energyView.update(time);
+    if (!this.placement.active) this.flowView.update(time, this.towers);
 
     // Win check: wave finished spawning and the board is clear.
     if (this.waveActive && !this.waves.spawning && this.enemies.length === 0) {
