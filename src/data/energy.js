@@ -18,12 +18,13 @@
 //     tier 1  -> its own tile only  (reserves nothing extra -> pack freely)
 //     tier 2  -> the 4 orthogonal neighbours (compass points)
 //     tier 3  -> all 8 surrounding cells
-//     conduit -> all 8 surrounding cells (blocks like a tier 3)
+//     conduit -> its own tile only, so the high-energy ring it creates stays
+//                free to build on (a conduit exists to POWER its neighbours)
 //   The visuals (flow / footprint ghost / select) draw exactly these cells.
 //
-// A conduit is also a source, so it both reserves its 8 neighbours AND extends
-// the generated field outward — but it must be planted on tier-1 energy
-// (generated >= 1), so you expand FROM your existing field, never in the void.
+// A conduit is also a source, so it extends the generated field outward — but
+// it must be planted on tier-1 energy (generated >= 1), so you expand FROM your
+// existing field, never in the void.
 //
 // Everything here is plain data — this file imports nothing from the app.
 // ---------------------------------------------------------------------------
@@ -44,11 +45,12 @@ export const ENERGY = {
   // Footprint offsets a piece reserves around itself, by kind. Its own tile is
   // always reserved via the grid; these are the EXTRA cells it blocks/draws.
   footprint: {
-    tier1: [], // own tile only
-    tier2: [   // 4 orthogonal "compass" neighbours
+    tier1: [],   // own tile only
+    conduit: [], // own tile only — keep its powered ring buildable
+    tier2: [     // 4 orthogonal "compass" neighbours
       { dc: 0, dr: -1 }, { dc: 0, dr: 1 }, { dc: -1, dr: 0 }, { dc: 1, dr: 0 },
     ],
-    tier3: [   // all 8 surrounding cells (also used by the conduit)
+    tier3: [     // all 8 surrounding cells
       { dc: -1, dr: -1 }, { dc: 0, dr: -1 }, { dc: 1, dr: -1 },
       { dc: -1, dr: 0 },                     { dc: 1, dr: 0 },
       { dc: -1, dr: 1 },  { dc: 0, dr: 1 },  { dc: 1, dr: 1 },

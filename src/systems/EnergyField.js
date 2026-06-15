@@ -24,10 +24,11 @@ export class EnergyField {
     this.cols = grid.cols;
     this.rows = grid.rows;
 
-    this.sources = [];        // { c, r, output, core? }
-    this.pieces = [];         // { c, r, def }
+    this.sources = [];          // { c, r, output, core? }
+    this.pieces = [];           // { c, r, def }
     this.generated = this.makeGrid();
-    this.reserved = new Set(); // "c,r" keys covered by some piece's footprint
+    this.reserved = new Set();   // "c,r" keys covered by some piece's footprint
+    this.sourceCells = new Set(); // "c,r" keys of placed conduits (feed, don't block)
 
     // The defended base/core is the primary, permanent energy source.
     const base = grid.baseCell;
@@ -50,7 +51,7 @@ export class EnergyField {
   // The extra cells a piece reserves around itself (its own tile excluded —
   // that's handled by the grid's occupancy).
   footprintFor(def) {
-    if (def.isSource) return ENERGY.footprint.tier3; // conduit blocks like a tier 3
+    if (def.isSource) return ENERGY.footprint.conduit; // small, so it can power neighbours
     const t = def.tier ?? 0;
     if (t >= 3) return ENERGY.footprint.tier3;
     if (t === 2) return ENERGY.footprint.tier2;
@@ -91,9 +92,13 @@ export class EnergyField {
       }
     }
 
-    // Reserved set: union of every piece's footprint.
+    // Reserved set: union of every piece's footprint. Conduit tiles are also
+    // tracked separately — a conduit FEEDS the grid, so a tower may build right
+    // up against one (its footprint passes over the conduit tile).
     this.reserved = new Set();
+    this.sourceCells = new Set();
     for (const p of this.pieces) {
+      if (p.def.isSource) this.sourceCells.add(this.key(p.c, p.r));
       for (const o of this.footprintFor(p.def)) {
         const fc = p.c + o.dc;
         const fr = p.r + o.dr;
@@ -119,7 +124,8 @@ export class EnergyField {
       const fr = r + o.dr;
       if (!this.grid.inBounds(fc, fr)) continue;
       if (this.isReserved(fc, fr)) return false;
-      if (this.grid.isOccupied(fc, fr)) return false;
+      // A conduit feeds rather than competes, so a footprint may pass over it.
+      if (this.grid.isOccupied(fc, fr) && !this.sourceCells.has(this.key(fc, fr))) return false;
     }
     return true;
   }

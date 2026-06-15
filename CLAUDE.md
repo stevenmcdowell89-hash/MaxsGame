@@ -131,11 +131,13 @@ decide *how*.
     (tier-1→1, tier-2→2, tier-3→3, conduit→1); a tower browns out if a source it
     relied on is removed (`Tower.setPowered`).
   - **HOW MANY — `reserved`:** each placed piece reserves a footprint by tier —
-    tier-1 its own tile only (packs freely), tier-2 the 4 orthogonal cells,
-    tier-3 and the conduit all 8 — and a piece can't be built if its tile or any
-    footprint cell is already reserved/occupied. Bigger pieces need more spacing.
-  A conduit is both a source and an 8-cell footprint, and must sit on existing
-  tier-1 energy, so you expand the field outward, never from the void. `GameScene`
+    tier-1 and the conduit their own tile only, tier-2 the 4 orthogonal cells,
+    tier-3 all 8 — and a piece can't be built if its tile or any footprint cell
+    is already reserved/occupied. Bigger pieces need more spacing. A conduit
+    FEEDS rather than competes, so a tower's footprint may pass over a conduit
+    (you can build right up against one to draw its power).
+  A conduit must sit on existing tier-1 energy, so you expand the field outward,
+  never from the void. `GameScene`
   owns the field, calls `refreshEnergy()` on every build/sell, and pushes the
   result to the heat-map glow (`EnergyView`), the consumption flow (`FlowView`),
   tower power state, and the placement overlay. All tuning is in `data/energy.js`.

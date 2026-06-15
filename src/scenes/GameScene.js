@@ -141,6 +141,10 @@ export class GameScene extends Phaser.Scene {
     const cam = this.cameras.main;
     const bounds = this.grid.getBounds(48);
     cam.setBounds(bounds.x, bounds.y, bounds.width, bounds.height);
+    // World-space board bounds, reused to cull stray projectiles. (The board is
+    // larger than the logical viewport, so projectiles must be culled against
+    // THIS, not scene.scale — otherwise shots near the edges die instantly.)
+    this.worldBounds = bounds;
 
     // Zoom at which the whole board fits the viewport — the most zoomed-out we
     // allow (and the starting view, so the big map reads at a glance).

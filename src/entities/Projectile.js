@@ -86,11 +86,15 @@ export class Projectile extends Phaser.GameObjects.Sprite {
     this.y += this.vy * dt;
     this.setDepth(DEPTH.entityBase + this.y + DEPTH.effectBias);
 
-    // Off-screen guard.
-    if (this.x < -50 || this.x > this.scene.scale.width + 50 ||
-        this.y < -50 || this.y > this.scene.scale.height + 50) {
-      this.destroy();
-      return 'done';
+    // Off-board guard. Cull against the world board bounds (the board is bigger
+    // than the logical viewport), with a 2000ms life cap as the real backstop.
+    const wb = this.scene.worldBounds;
+    if (wb) {
+      if (this.x < wb.x - 50 || this.x > wb.x + wb.width + 50 ||
+          this.y < wb.y - 50 || this.y > wb.y + wb.height + 50) {
+        this.destroy();
+        return 'done';
+      }
     }
     return 'flying';
   }
