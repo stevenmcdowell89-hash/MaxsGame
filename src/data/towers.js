@@ -112,7 +112,7 @@ export const TOWERS = {
     name: 'Power Conduit',
     textureKey: 'piece-conduit',
     tier: 0,
-    cost: 30,
+    cost: 100,
     isSource: true,
     noAttack: true,
     placeholder: { shape: 'hexagon', color: 0x8be9ff },
@@ -124,3 +124,7 @@ export const TOWERS = {
 export const DEFAULT_TOWER_ID = 'scout';
 
 export const TOWER_LIST = Object.values(TOWERS);
+
+// How many towers of each tier the player may have placed at once. Conduits
+// (tier 0) are uncapped. The HUD shows the running count/cap per piece.
+export const TIER_CAPS = { 1: 7, 2: 5, 3: 2 };

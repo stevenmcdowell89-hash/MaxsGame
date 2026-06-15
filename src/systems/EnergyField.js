@@ -29,6 +29,7 @@ export class EnergyField {
     this.generated = this.makeGrid();
     this.reserved = new Set();   // "c,r" keys covered by some piece's footprint
     this.sourceCells = new Set(); // "c,r" keys of placed conduits (feed, don't block)
+    this.activeConduitCells = new Set(); // conduits still connected to the core
 
     // The defended base/core is the primary, permanent energy source.
     const base = grid.baseCell;
@@ -80,11 +81,39 @@ export class EnergyField {
   // ---- computation ------------------------------------------------------
 
   recompute() {
-    // Generated field: max contribution of any source, clamped at 0.
+    // 1) Connectivity flood from the core. A conduit only counts as a source if
+    //    it's still connected back to the core through the powered field — i.e.
+    //    some already-active source reaches its tile with >= conduitPlaceTier.
+    //    This cascades: sell a conduit mid-chain and everything downstream of it
+    //    goes dark.
+    const active = [];
+    const pending = [];
+    for (const s of this.sources) (s.core ? active : pending).push(s);
+    let changed = true;
+    while (changed && pending.length) {
+      changed = false;
+      for (let i = pending.length - 1; i >= 0; i--) {
+        const cd = pending[i];
+        let best = 0;
+        for (const s of active) {
+          const v = s.output - this.cheby(cd.c, cd.r, s.c, s.r);
+          if (v > best) best = v;
+        }
+        if (best >= ENERGY.conduitPlaceTier) {
+          active.push(cd);
+          pending.splice(i, 1);
+          changed = true;
+        }
+      }
+    }
+    this.activeConduitCells = new Set();
+    for (const s of active) if (!s.core) this.activeConduitCells.add(this.key(s.c, s.r));
+
+    // 2) Generated field: max contribution of any ACTIVE source, clamped at 0.
     for (let c = 0; c < this.cols; c++) {
       for (let r = 0; r < this.rows; r++) {
         let best = 0;
-        for (const s of this.sources) {
+        for (const s of active) {
           const v = s.output - this.cheby(c, r, s.c, s.r);
           if (v > best) best = v;
         }
@@ -92,7 +121,7 @@ export class EnergyField {
       }
     }
 
-    // Reserved set: union of every piece's footprint. Conduit tiles are also
+    // 3) Reserved set: union of every piece's footprint. Conduit tiles are also
     // tracked separately — a conduit FEEDS the grid, so a tower may build right
     // up against one (its footprint passes over the conduit tile).
     this.reserved = new Set();
@@ -130,11 +159,12 @@ export class EnergyField {
     return true;
   }
 
-  // Is a placed piece still powered? Sources always are; a tower needs its tile
-  // to still carry enough generated strength for its tier (it browns out if a
-  // source it relied on is removed).
+  // Is a placed piece still powered? A conduit is powered only while it's still
+  // connected to the core (an active source); a tower needs its tile to carry
+  // enough generated strength for its tier. Either browns out if the chain or a
+  // source it relied on is broken.
   poweredFor(c, r, def) {
-    if (def.isSource) return true;
+    if (def.isSource) return this.activeConduitCells.has(this.key(c, r));
     return this.generated[c][r] >= (def.tier ?? 0);
   }
 }

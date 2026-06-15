@@ -136,19 +136,19 @@ export class HUDScene extends Phaser.Scene {
   buildPalette(pieces) {
     if (this._paletteBuilt) return;
     this._paletteBuilt = true;
-    this._pieces = pieces;
+    this._pieces = pieces.map((p) => ({
+      ...p, short: p.isSource ? 'CONDUIT' : p.name.split(' ')[0].toUpperCase(),
+    }));
 
     const h = GAME.height;
     const centers = [64, 182, 300, 418];
-    pieces.slice(0, centers.length).forEach((p, i) => {
-      const short = p.isSource ? 'CONDUIT' : p.name.split(' ')[0].toUpperCase();
-      const sub = p.isSource ? `⚡ ${p.cost}g` : `T${p.tier} · ${p.cost}g`;
-      const btn = this.makeButton(centers[i], h - 48, 110, 72, `${short}\n${sub}`, () => {
+    this._pieces.slice(0, centers.length).forEach((p, i) => {
+      const btn = this.makeButton(centers[i], h - 48, 110, 72, '', () => {
         // Toggle: tapping the selected piece exits build mode; tapping another
         // switches to it.
         const active = !(this.buildActive && this.selectedId === p.id);
         EventBus.emit(EVENTS.REQUEST_BUILD_MODE, { active, towerId: p.id });
-      }, { fontSize: '15px' });
+      }, { fontSize: '14px' });
       this.pieceButtons[p.id] = btn;
     });
 
@@ -162,16 +162,24 @@ export class HUDScene extends Phaser.Scene {
     }
   }
 
-  // Enable/disable each piece button by affordability (the selected piece stays
-  // enabled so it can be toggled back off even when funds dip).
+  // Update each piece button: label (with the placed/cap count for capped
+  // pieces) and enabled state (affordable AND not at its tier cap; the active
+  // piece stays enabled so it can be toggled back off).
   refreshPalette() {
     if (!this._pieces) return;
     const gold = this._gold ?? 0;
+    const counts = this._counts ?? {};
     for (const p of this._pieces) {
       const btn = this.pieceButtons[p.id];
       if (!btn) continue;
+      const sub = p.isSource ? `⚡ ${p.cost}g` : `T${p.tier} · ${p.cost}g`;
+      const count = counts[p.tier] ?? 0;
+      const capped = p.max != null;
+      const atCap = capped && count >= p.max;
+      btn.setLabel(`${p.short}\n${sub}${capped ? `\n${count}/${p.max}` : ''}`);
       const affordable = gold >= p.cost;
-      btn.setEnabled(affordable || (this.buildActive && this.selectedId === p.id));
+      const isActive = this.buildActive && this.selectedId === p.id;
+      btn.setEnabled((affordable && !atCap) || isActive);
     }
   }
 
@@ -217,6 +225,7 @@ export class HUDScene extends Phaser.Scene {
     });
 
     on(EVENTS.GOLD_CHANGED, (g) => { this.setGold(g); this.refreshPalette(); });
+    on(EVENTS.COUNTS_CHANGED, (counts) => { this._counts = counts; this.refreshPalette(); });
     on(EVENTS.LIVES_CHANGED, (l) => this.setLives(l));
     on(EVENTS.WAVE_CHANGED, ({ wave, totalWaves }) => this.setWave(wave, totalWaves));
     on(EVENTS.WAVE_READY, (ready) => {

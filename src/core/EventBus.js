@@ -22,6 +22,7 @@ export const EVENTS = {
   GAME_OVER: 'state:gameOver',  // { win:boolean, wave:number, best:number }
   TOWER_SELECTED: 'state:towerSelected',     // { refund:number }
   TOWER_DESELECTED: 'state:towerDeselected',
+  COUNTS_CHANGED: 'state:counts',            // { 1:n, 2:n, 3:n } placed per tier
 
   // HUD -> GameScene (player intent)
   HUD_READY: 'cmd:hudReady',           // HUD finished setup; ask for initial state

@@ -9,7 +9,7 @@ import { GAME, ISO, PALETTE, DEPTH } from '../data/game.js';
 import { LEVELS, DEFAULT_LEVEL_ID } from '../data/levels.js';
 import { WAVES } from '../data/waves.js';
 import { ENEMIES } from '../data/enemies.js';
-import { TOWERS, TOWER_LIST, DEFAULT_TOWER_ID } from '../data/towers.js';
+import { TOWERS, TOWER_LIST, DEFAULT_TOWER_ID, TIER_CAPS } from '../data/towers.js';
 import { ENERGY } from '../data/energy.js';
 
 import { EventBus, EVENTS } from '../core/EventBus.js';
@@ -306,9 +306,11 @@ export class GameScene extends Phaser.Scene {
       pieces: TOWER_LIST.map((t) => ({
         id: t.id, name: t.name, cost: t.cost,
         tier: t.tier ?? 0, isSource: !!t.isSource,
+        max: TIER_CAPS[t.tier ?? 0] ?? null,
       })),
     });
     EventBus.emit(EVENTS.WAVE_READY, true);
+    this.emitCounts();
   }
 
   // ------------------------------------------------------------- economy ----
@@ -350,6 +352,12 @@ export class GameScene extends Phaser.Scene {
       this.audio.deny();
       return;
     }
+    // Per-tier build cap (conduits, tier 0, are uncapped).
+    const tier = def.tier ?? 0;
+    if (tier > 0 && TIER_CAPS[tier] != null && this.countByTier(tier) >= TIER_CAPS[tier]) {
+      this.audio.deny();
+      return;
+    }
     // Energy gate: enough generated strength for the piece's tier AND its
     // footprint must be clear of other pieces' reservations.
     if (!this.energy.canPlace(cell.c, cell.r, def)) {
@@ -366,9 +374,22 @@ export class GameScene extends Phaser.Scene {
     // Register the piece with the energy field, then recompute everything.
     this.energy.addPiece(cell.c, cell.r, def);
     this.refreshEnergy();
+    this.emitCounts();
 
     this.audio.place();
     this.spawnPlaceDust(pos);
+  }
+
+  countByTier(tier) {
+    let n = 0;
+    for (const t of this.towers) if ((t.def.tier ?? 0) === tier) n++;
+    return n;
+  }
+
+  emitCounts() {
+    EventBus.emit(EVENTS.COUNTS_CHANGED, {
+      1: this.countByTier(1), 2: this.countByTier(2), 3: this.countByTier(3),
+    });
   }
 
   // Recompute the field and push the consequences everywhere it shows: the glow
@@ -586,6 +607,7 @@ export class GameScene extends Phaser.Scene {
     this.energy.removePieceAt(tower.cell.c, tower.cell.r);
     tower.destroy();
     this.refreshEnergy();
+    this.emitCounts();
 
     this.addGold(refund);
     this.audio.sell();

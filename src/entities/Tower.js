@@ -115,13 +115,12 @@ export class Tower extends Phaser.GameObjects.Container {
     });
   }
 
-  // Energy gate: when a tower's tile drops below its tier requirement it browns
-  // out — tint red, dim, halt firing, drop its grid tap and raise a warning
-  // marker. Conduits are sources, so they never brown out.
+  // Energy gate: when a tower's tile drops below its tier requirement (or a
+  // conduit loses its connection to the core) it browns out — tint red, dim,
+  // halt firing, drop its grid tap and raise a warning marker.
   setPowered(on) {
     if (on === this.powered) return;
     this.powered = on;
-    if (this.def.noAttack) return;
     if (on) {
       this.sprite.clearTint();
       this.sprite.setAlpha(1);
