@@ -249,7 +249,7 @@ export function generatePlaceholderTextures(scene) {
   // for buildable cells and a translucent dark diamond for the worn path.
   // Without it, fall back to the procedural flat-colour block diamonds.
   if (scene.textures.exists('terrain-cracked')) {
-    makeOverlayTile(scene, 'tile-ground', { lineColor: 0x241a0e, lineAlpha: 0.12 });
+    makeOverlayTile(scene, 'tile-ground', { lineColor: 0x241a0e, lineAlpha: 0.05 });
     makeOverlayTile(scene, 'tile-path', { fillColor: 0x140d04, fillAlpha: 0.42, lineColor: 0x140d04, lineAlpha: 0.4 });
   } else {
     makeTileTexture(scene, 'tile-ground', PALETTE.tileGround, PALETTE.tileGroundEdge);

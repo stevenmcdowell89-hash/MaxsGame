@@ -80,6 +80,19 @@ export const ENERGY = {
     pulseMs: 1600,
   },
 
+  // Ambient, always-on indicator: a subtle blue glow that pulses along the grid
+  // lines bordering the powered region (where generated > 0). Deliberately
+  // slight — just a hint of where the grid is live. The full per-cell heat map
+  // (field.bandColors above) is hidden unless a piece is tapped/inspected.
+  powerGlow: {
+    color: 0x6fd0ff,
+    alpha: 0.5,    // base line alpha (additive); the pulse scales the layer alpha
+    width: 2,
+    pulseLo: 0.30,
+    pulseHi: 0.85,
+    pulseMs: 1500,
+  },
+
   // Animated consumption flow: motes from each reserved tile into the tower.
   // Deliberately SLOW and SUBTLE (~30% opacity) — present but not distracting.
   // Rendered ADDITIVE white so the motes still read over any heat-map colour.

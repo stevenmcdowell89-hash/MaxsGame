@@ -441,6 +441,8 @@ export class GameScene extends Phaser.Scene {
     this.selectedTower = tower;
     this.drawRangeRing(tower);
     this.drawPieceFootprint(tower);
+    // Reveal the full per-cell energy heat map while inspecting a piece.
+    this.energyView.setInspecting(true);
     this.audio.select();
     EventBus.emit(EVENTS.TOWER_SELECTED, { refund: this.refundFor(tower) });
   }
@@ -452,6 +454,7 @@ export class GameScene extends Phaser.Scene {
     this.rangeRing.setVisible(false);
     this.footprintView.clear();
     this.footprintView.setVisible(false);
+    this.energyView.setInspecting(false);
     EventBus.emit(EVENTS.TOWER_DESELECTED);
   }
 

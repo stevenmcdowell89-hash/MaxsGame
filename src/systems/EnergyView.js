@@ -1,19 +1,17 @@
 // ---------------------------------------------------------------------------
-// EnergyView: the field-glow layer — "where the GRID is energised".
+// EnergyView: two layers over the terrain.
 //
-// It draws the EnergyField's `generated` strength (the raw energy radiated by
-// the sources), NOT the post-drain `available`. Keeping towers' consumption out
-// of this layer is deliberate: the field reads purely as energy and never
-// dims/flickers as you place towers. A tower's draw is shown on its own amber
-// channel (the per-piece intake node + the on-select footprint); brownouts show
-// red on the tower. So the three things stay visually separate and legible.
+//   GLOW (always on, subtle): a blue line that pulses along the grid edges
+//   bordering the powered region (cells with generated > 0). It's a slight "the
+//   grid is live here" hint — additive, low alpha, gently breathing.
 //
-// Look: a cool->hot heat map (distinct hue per strength tier so each reads on
-// its own), a soft halo at each source centre, and a gentle breathing pulse so
-// it reads as live energy. A single Graphics above the tiles, below entities;
-// the scene calls
-// redraw() whenever the sources change (a conduit placed/sold) and toggles it
-// off in build mode (where the green/red placement overlay takes over).
+//   HEAT (inspect only): the full per-cell colour map (the cool->hot bands +
+//   source halos). Hidden by default; the scene shows it while a piece is
+//   selected, so the detailed energy picture is on-demand, not constant noise.
+//
+// Both are pure readouts of the EnergyField's `generated` field; the scene calls
+// redraw() whenever the sources change, toggles the glow off in build mode, and
+// toggles the heat on/off as pieces are selected/deselected.
 // ---------------------------------------------------------------------------
 
 import { ISO, DEPTH } from '../data/game.js';
@@ -25,33 +23,79 @@ export class EnergyView {
     this.grid = grid;
     this.field = field;
 
-    this.g = scene.add.graphics();
-    this.g.setDepth(DEPTH.tiles + 500); // above tiles, below entities/overlays
+    // Inspect-only heat map (drawn under the glow).
+    this.heat = scene.add.graphics();
+    this.heat.setDepth(DEPTH.tiles + 498);
+    this.heat.setVisible(false);
 
-    // Breathing pulse: tween the layer's alpha so the field feels alive.
-    this.scene.tweens.add({
-      targets: this.g,
-      alpha: { from: ENERGY.field.pulseLo, to: ENERGY.field.pulseHi },
-      duration: ENERGY.field.pulseMs,
+    // Always-on blue boundary glow, gently pulsing.
+    this.glow = scene.add.graphics();
+    this.glow.setDepth(DEPTH.tiles + 500);
+    this.glow.setBlendMode(Phaser.BlendModes.ADD);
+    scene.tweens.add({
+      targets: this.glow,
+      alpha: { from: ENERGY.powerGlow.pulseLo, to: ENERGY.powerGlow.pulseHi },
+      duration: ENERGY.powerGlow.pulseMs,
       yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
     });
 
     this.redraw();
   }
 
+  // Heat map on/off (a piece is being inspected).
+  setInspecting(v) { this.heat.setVisible(v); }
+
+  // Whole view on/off (off during build mode, where the placement overlay owns
+  // the board). Hiding also drops the heat map.
   setVisible(v) {
-    this.g.setVisible(v);
+    this.glow.setVisible(v);
+    if (!v) this.heat.setVisible(false);
+  }
+
+  powered(c, r) {
+    return this.grid.inBounds(c, r) && this.field.generatedAt(c, r) > 0;
   }
 
   redraw() {
-    const g = this.g;
-    g.clear();
+    this.redrawGlow();
+    this.redrawHeat();
+  }
 
+  // Blue line along each powered cell's edge that borders an UN-powered cell —
+  // i.e. the outline surrounding the live region.
+  redrawGlow() {
+    const g = this.glow;
+    g.clear();
+    const w = ISO.tileWidth;
+    const h = ISO.tileHeight;
+    const G = ENERGY.powerGlow;
+    g.lineStyle(G.width, G.color, G.alpha);
+
+    for (let r = 0; r < this.grid.rows; r++) {
+      for (let c = 0; c < this.grid.cols; c++) {
+        if (!this.powered(c, r)) continue;
+        const p = this.grid.toScreen(c, r);
+        const tx = p.x,        ty = p.y - h / 2; // top vertex
+        const rx = p.x + w / 2, ry = p.y;        // right vertex
+        const bx = p.x,        by = p.y + h / 2; // bottom vertex
+        const lx = p.x - w / 2, ly = p.y;        // left vertex
+        // Each diamond edge faces one grid-orthogonal neighbour.
+        if (!this.powered(c, r - 1)) g.lineBetween(tx, ty, rx, ry); // upper-right
+        if (!this.powered(c + 1, r)) g.lineBetween(rx, ry, bx, by); // lower-right
+        if (!this.powered(c, r + 1)) g.lineBetween(bx, by, lx, ly); // lower-left
+        if (!this.powered(c - 1, r)) g.lineBetween(lx, ly, tx, ty); // upper-left
+      }
+    }
+  }
+
+  redrawHeat() {
+    const g = this.heat;
+    g.clear();
     const w = ISO.tileWidth;
     const h = ISO.tileHeight;
     const F = ENERGY.field;
 
-    // Soft emitter halo at each source centre — sources visibly radiate energy.
+    // Soft halo at each source centre.
     for (const s of this.field.sources) {
       const pos = this.grid.toScreen(s.c, s.r);
       g.fillStyle(F.sourceColor, F.sourceGlowA * 0.5);
@@ -60,14 +104,12 @@ export class EnergyView {
       g.fillCircle(pos.x, pos.y, F.sourceGlowR * 0.55);
     }
 
-    // Banded field fill (generated strength). No edge strokes — they used to
-    // read like tile borders; soft additive fills read as glow instead.
+    // Banded heat map by generated strength.
     for (let r = 0; r < this.grid.rows; r++) {
       for (let c = 0; c < this.grid.cols; c++) {
         let lvl = Math.floor(this.field.generatedAt(c, r));
         if (lvl <= 0) continue;
         if (lvl > ENERGY.maxLevel) lvl = ENERGY.maxLevel;
-
         const pos = this.grid.toScreen(c, r);
         g.fillStyle(F.bandColors[lvl], F.bandAlphas[lvl]);
         g.beginPath();
@@ -82,6 +124,7 @@ export class EnergyView {
   }
 
   destroy() {
-    this.g.destroy();
+    this.heat.destroy();
+    this.glow.destroy();
   }
 }
