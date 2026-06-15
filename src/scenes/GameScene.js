@@ -748,8 +748,10 @@ export class GameScene extends Phaser.Scene {
       if (status === 'done') this.projectiles.splice(i, 1);
     }
 
-    // Animate energy being drawn from the grid into the towers (skipped in
-    // build mode, where the placement overlay owns the board).
+    // Animate the field: the tiered power glow pulses outward; consumption motes
+    // flow into towers (the latter skipped in build mode where the overlay owns
+    // the board).
+    this.energyView.update(time);
     if (!this.placement.active) this.flowView.update(time, this.towers);
 
     // Win check: wave finished spawning and the board is clear.

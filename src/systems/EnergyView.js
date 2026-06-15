@@ -28,21 +28,15 @@ export class EnergyView {
     this.heat.setDepth(DEPTH.tiles + 498);
     this.heat.setVisible(false);
 
-    // Always-on blue boundary glow, gently pulsing.
+    // Always-on blue power glow (tiered + animated; redrawn each frame).
     this.glow = scene.add.graphics();
     this.glow.setDepth(DEPTH.tiles + 500);
     this.glow.setBlendMode(Phaser.BlendModes.ADD);
-    scene.tweens.add({
-      targets: this.glow,
-      alpha: { from: ENERGY.powerGlow.pulseLo, to: ENERGY.powerGlow.pulseHi },
-      duration: ENERGY.powerGlow.pulseMs,
-      yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
-    });
 
     this.redraw();
   }
 
-  // Heat map on/off (a piece is being inspected).
+  // Heat map on/off (a conduit/base is being inspected).
   setInspecting(v) { this.heat.setVisible(v); }
 
   // Whole view on/off (off during build mode, where the placement overlay owns
@@ -56,24 +50,44 @@ export class EnergyView {
     return this.grid.inBounds(c, r) && this.field.generatedAt(c, r) > 0;
   }
 
+  // Drive the flowing pulse (called each frame by the scene).
+  update(time) {
+    if (this.glow.visible) this.redrawGlow(time);
+  }
+
   redraw() {
-    this.redrawGlow();
+    this.redrawGlow(this.scene.time.now);
     this.redrawHeat();
   }
 
+  // A brightness band that sweeps from the source tier (maxLevel) out to the
+  // edge (0) and repeats, so the glow appears to pulse outward along the grid.
+  pulseBoost(level, time) {
+    const G = ENERGY.powerGlow;
+    const span = ENERGY.maxLevel + 2 * G.pulseBand;
+    const phase = (time % G.pulseMs) / G.pulseMs;
+    const front = (ENERGY.maxLevel + G.pulseBand) - phase * span;
+    const d = Math.abs(level - front);
+    return d < G.pulseBand ? G.pulseAmp * (1 - d / G.pulseBand) : 0;
+  }
+
   // Blue grid over the powered region: every powered cell's full diamond
-  // outline glows (interior lines as well as the boundary).
-  redrawGlow() {
+  // outline glows, brighter the stronger the cell, plus the flowing pulse.
+  redrawGlow(time) {
     const g = this.glow;
     g.clear();
     const w = ISO.tileWidth;
     const h = ISO.tileHeight;
     const G = ENERGY.powerGlow;
-    g.lineStyle(G.width, G.color, G.alpha);
 
     for (let r = 0; r < this.grid.rows; r++) {
       for (let c = 0; c < this.grid.cols; c++) {
-        if (!this.powered(c, r)) continue;
+        let lvl = Math.floor(this.field.generatedAt(c, r));
+        if (lvl <= 0) continue;
+        if (lvl > ENERGY.maxLevel) lvl = ENERGY.maxLevel;
+
+        const a = Math.min(0.95, (G.alphaByLevel[lvl] ?? 0) + this.pulseBoost(lvl, time));
+        g.lineStyle(G.width, G.color, a);
         const p = this.grid.toScreen(c, r);
         g.beginPath();
         g.moveTo(p.x, p.y - h / 2);

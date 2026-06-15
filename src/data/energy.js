@@ -80,17 +80,20 @@ export const ENERGY = {
     pulseMs: 1600,
   },
 
-  // Ambient, always-on indicator: a subtle blue glow that pulses along the grid
-  // lines bordering the powered region (where generated > 0). Deliberately
-  // slight — just a hint of where the grid is live. The full per-cell heat map
-  // (field.bandColors above) is hidden unless a piece is tapped/inspected.
+  // Ambient, always-on indicator: a blue glow along the grid lines of the
+  // powered region, TIERED by generated strength — faint at the tier-1 edge,
+  // strongest right at the source. A subtle brightness band also sweeps outward
+  // from the sources through the lines (energy "pulsing" through the field).
+  // The full per-cell heat map is still hidden unless a conduit/base is tapped.
   powerGlow: {
     color: 0x6fd0ff,
-    alpha: 0.5,    // base line alpha (additive); the pulse scales the layer alpha
     width: 2,
-    pulseLo: 0.30,
-    pulseHi: 0.85,
-    pulseMs: 1500,
+    // Line alpha per generated level (index = level). Edge (1) faint but
+    // visible; source (5) strongest; the old uniform ~0.5 now sits upper-mid.
+    alphaByLevel: [0, 0.16, 0.30, 0.45, 0.60, 0.78],
+    pulseAmp: 0.28,  // extra brightness at the pulse front
+    pulseBand: 1.4,  // band half-width, in tiers
+    pulseMs: 2600,   // sweep period (source -> edge), then repeat
   },
 
   // Animated consumption flow: motes from each reserved tile into the tower.
