@@ -72,34 +72,48 @@ export class EnergyView {
     return d < G.pulseBand ? (1 - d / G.pulseBand) : 0;
   }
 
-  // Blue grid over the powered region: every powered cell's full diamond
-  // outline, tiered by opacity AND width, plus the flowing pulse on both.
+  // Blue grid over the powered region as "lightning": a blue body pass, then a
+  // white-hot core pass on top. Both tiered by opacity + width; the pulse flashes
+  // the core as it sweeps outward. Two passes so cores always sit above bodies.
   redrawGlow(time) {
     const g = this.glow;
     g.clear();
-    const w = ISO.tileWidth;
-    const h = ISO.tileHeight;
     const G = ENERGY.powerGlow;
+    const diamond = (p) => {
+      const w = ISO.tileWidth, h = ISO.tileHeight;
+      g.beginPath();
+      g.moveTo(p.x, p.y - h / 2);
+      g.lineTo(p.x + w / 2, p.y);
+      g.lineTo(p.x, p.y + h / 2);
+      g.lineTo(p.x - w / 2, p.y);
+      g.closePath();
+      g.strokePath();
+    };
 
+    const cells = [];
     for (let r = 0; r < this.grid.rows; r++) {
       for (let c = 0; c < this.grid.cols; c++) {
         let lvl = Math.floor(this.field.generatedAt(c, r));
         if (lvl <= 0) continue;
         if (lvl > ENERGY.maxLevel) lvl = ENERGY.maxLevel;
-
         const pulse = this.pulseAt(lvl, time);
-        const a = Math.min(0.96, (G.alphaByLevel[lvl] ?? 0) + G.pulseAmp * pulse);
-        const wd = (G.widthByLevel[lvl] ?? 2) + G.pulseWidth * pulse;
-        g.lineStyle(wd, G.color, a);
-        const p = this.grid.toScreen(c, r);
-        g.beginPath();
-        g.moveTo(p.x, p.y - h / 2);
-        g.lineTo(p.x + w / 2, p.y);
-        g.lineTo(p.x, p.y + h / 2);
-        g.lineTo(p.x - w / 2, p.y);
-        g.closePath();
-        g.strokePath();
+        const pos = this.grid.toScreen(c, r);
+        const bodyW = (G.widthByLevel[lvl] ?? 2) + G.pulseWidth * pulse;
+        cells.push({ pos, lvl, pulse, bodyW });
       }
+    }
+
+    // Pass 1: blue bodies.
+    for (const e of cells) {
+      const a = Math.min(1, (G.alphaByLevel[e.lvl] ?? 0) + G.pulseAmp * e.pulse);
+      g.lineStyle(e.bodyW, G.color, a);
+      diamond(e.pos);
+    }
+    // Pass 2: white-hot cores.
+    for (const e of cells) {
+      const a = Math.min(0.95, (G.coreAlphaByLevel[e.lvl] ?? 0) + G.pulseCore * e.pulse);
+      g.lineStyle(Math.max(1, e.bodyW * 0.4), G.coreColor, a);
+      diamond(e.pos);
     }
   }
 

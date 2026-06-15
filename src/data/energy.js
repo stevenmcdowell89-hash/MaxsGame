@@ -86,15 +86,21 @@ export const ENERGY = {
   // bright terrain, hiding the higher tiers), and tiered by BOTH opacity and
   // line width so strength reads clearly. A brightness/width band also sweeps
   // outward from the source through the lines (energy "pulsing" through).
+  // Drawn as "blue lightning": a blue body line with a white-hot core on top.
+  // Tiered by opacity AND width (edge bright-but-thin, source bold), and the
+  // pulse flashes the white core as it sweeps outward.
   powerGlow: {
-    color: 0x5ec8ff,
-    // Per generated level (index = level): edge faint, source strong.
-    alphaByLevel: [0, 0.22, 0.38, 0.54, 0.70, 0.88],
-    widthByLevel: [0, 1.5, 1.7, 2.1, 2.6, 3.2],
-    pulseAmp: 0.18,   // opacity boost at the pulse front
-    pulseWidth: 1.8,  // line-width boost (px) at the pulse front
+    color: 0x73d3ff,      // blue body
+    coreColor: 0xeafaff,  // white-hot core
+    // Per generated level (index = level): edge clearly visible, source strong.
+    alphaByLevel: [0, 0.46, 0.60, 0.74, 0.88, 1.0],
+    coreAlphaByLevel: [0, 0.20, 0.28, 0.37, 0.48, 0.62],
+    widthByLevel: [0, 2.0, 2.3, 2.8, 3.4, 4.2],
+    pulseAmp: 0.16,   // body opacity boost at the pulse front
+    pulseWidth: 2.0,  // line-width boost (px) at the pulse front
+    pulseCore: 0.38,  // white-core opacity boost at the front (the lightning flash)
     pulseBand: 1.3,   // band half-width, in tiers
-    pulseMs: 2400,    // sweep period (source -> edge), then repeat
+    pulseMs: 2200,    // sweep period (source -> edge), then repeat
   },
 
   // Animated consumption flow: motes from each reserved tile into the tower.
